@@ -3,7 +3,7 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { FormEvent, useState } from "react";
 
-export function AuthForm() {
+export function AuthForm({ context = "book" }: { context?: "book" | "share" }) {
   const { signIn } = useAuthActions();
   const [mode, setMode] = useState<"signUp" | "signIn">("signUp");
   const [busy, setBusy] = useState(false);
@@ -27,13 +27,13 @@ export function AuthForm() {
     <div className="auth-shell">
       <section className="auth-intro" aria-labelledby="auth-title">
         <p className="wordmark">Triplog</p>
-        <p className="eyebrow">A private travel book</p>
-        <h1 id="auth-title">The photographs you kept. The stories only you know.</h1>
-        <p>Shape one completed trip into a quiet chapter, built from your photos and told in your voice.</p>
+        <p className="eyebrow">{context === "share" ? "A journey shared with you" : "A private travel book"}</p>
+        <h1 id="auth-title">{context === "share" ? "Someone saved the details worth passing on." : "The photographs you kept. The stories only you know."}</h1>
+        <p>{context === "share" ? "Sign in to read the complete journey. Shared books stay private to people who have the link." : "Shape one completed trip into a quiet chapter, built from your photos and told in your voice."}</p>
       </section>
       <form className="auth-card" onSubmit={submit}>
         <div>
-          <p className="eyebrow">{mode === "signUp" ? "Begin your book" : "Return to your book"}</p>
+          <p className="eyebrow">{context === "share" ? "Open the shared journey" : mode === "signUp" ? "Begin your book" : "Return to your book"}</p>
           <h2>{mode === "signUp" ? "Create a private account" : "Sign in"}</h2>
         </div>
         <label>Email<input name="email" type="email" autoComplete="email" required /></label>

@@ -1,18 +1,20 @@
-export const MAX_PHOTOS = 6;
+export const MAX_PHOTOS = 500;
 
 export type ChapterFields = {
   title: string;
   photoCount: number;
-  days: Array<{ displayDate: string; place: string; memory: string }>;
+  days: Array<{ displayDate: string; place: string; memory?: string }>;
+  moments?: Array<{ memory: string; recommendation: string; warning: string; detail: string }>;
 };
 
 export function chapterProblem(fields: ChapterFields): string | null {
-  if (!fields.title.trim()) return "Give this trip a name.";
+  if (!fields.title.trim() || fields.title.trim() === "Untitled journey") return "Give this trip a name.";
   if (fields.photoCount < 1) return "Add at least one photo.";
   if (fields.days.length < 1) return "Confirm at least one day.";
-  if (fields.days.some((day) => !day.displayDate.trim())) return "Confirm every missing date.";
-  if (fields.days.some((day) => !day.place.trim())) return "Confirm every missing place.";
-  if (fields.days.some((day) => !day.memory.trim())) return "Add one memory for each day, in your own words.";
+  const hasTravellerWords = fields.moments?.some((moment) =>
+    [moment.memory, moment.recommendation, moment.warning, moment.detail].some((value) => value.trim()),
+  ) ?? fields.days.some((day) => day.memory?.trim());
+  if (!hasTravellerWords) return "Add at least one detail in your own words before sharing.";
   return null;
 }
 

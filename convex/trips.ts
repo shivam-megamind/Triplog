@@ -1,11 +1,22 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
+import { MAX_PHOTOS } from "../lib/trip";
+import { groupPhotosIntoMoments, groupedPhotoCount } from "../lib/reconstruction";
 import { action, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
-const MAX_PHOTOS = 6;
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
+const processingStatus = v.union(
+  v.literal("selecting"),
+  v.literal("reading"),
+  v.literal("ordering"),
+  v.literal("grouping"),
+  v.literal("shaping"),
+  v.literal("ready"),
+  v.literal("error"),
+);
 
 async function requireUserId(ctx: QueryCtx | MutationCtx) {
   const userId = await getAuthUserId(ctx);
@@ -24,19 +35,57 @@ function photoTime(photo: Doc<"photos">) {
   return photo.capturedAt ?? Number.MAX_SAFE_INTEGER;
 }
 
+function displayDate(dateKey: string) {
+  if (dateKey === "undated") return "";
+  return new Intl.DateTimeFormat("en", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+    .format(new Date(`${dateKey}T12:00:00Z`));
+}
+
 async function hydratedTrip(ctx: QueryCtx, trip: Doc<"trips">) {
-  const [photos, days] = await Promise.all([
+  const [photos, days, moments] = await Promise.all([
     ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect(),
     ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect(),
+    ctx.db.query("moments").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect(),
   ]);
   const sortedPhotos = photos.sort((a, b) => photoTime(a) - photoTime(b) || a.order - b.order);
+  const hydratedPhotos = await Promise.all(sortedPhotos.map(async (photo) => ({
+    ...photo,
+    url: await ctx.storage.getUrl(photo.storageId),
+  })));
+  const photoById = new Map(hydratedPhotos.map((photo) => [photo._id, photo]));
+  const hydratedMoments = moments.sort((a, b) => a.sortOrder - b.sortOrder).map((moment) => ({
+    ...moment,
+    photos: moment.photoIds.flatMap((photoId) => {
+      const photo = photoById.get(photoId);
+      return photo ? [photo] : [];
+    }),
+    representativePhoto: photoById.get(moment.representativePhotoId) ?? null,
+  }));
+  const momentsByDay = new Map<Id<"days">, typeof hydratedMoments>();
+  for (const moment of hydratedMoments) {
+    const current = momentsByDay.get(moment.dayId);
+    if (current) current.push(moment);
+    else momentsByDay.set(moment.dayId, [moment]);
+  }
+  const sortedDays = days.sort((a, b) => a.dayNumber - b.dayNumber).map((day) => ({
+    ...day,
+    photos: hydratedPhotos.filter((photo) => (photo.dateKey ?? "undated") === day.dateKey),
+    moments: momentsByDay.get(day._id) ?? [],
+  }));
   return {
     ...trip,
-    days: days.sort((a, b) => a.dayNumber - b.dayNumber).map((day) => ({
-      ...day,
-      photos: sortedPhotos.filter((photo) => (photo.dateKey ?? "undated") === day.dateKey),
-    })),
-    photos: await Promise.all(sortedPhotos.map(async (photo) => ({ ...photo, url: await ctx.storage.getUrl(photo.storageId) }))),
+    photoCount: hydratedPhotos.length,
+    momentCount: hydratedMoments.length,
+    groupedPhotoCount: groupedPhotoCount(hydratedMoments.map((moment) => ({
+      key: moment.key,
+      dateKey: moment.dateKey,
+      photoIds: moment.photoIds,
+      representativePhotoId: moment.representativePhotoId,
+      startTime: moment.startTime,
+    }))),
+    days: sortedDays,
+    moments: hydratedMoments,
+    photos: hydratedPhotos,
   };
 }
 
@@ -46,8 +95,8 @@ export const listMine = query({
     const userId = await requireUserId(ctx);
     const trips = await ctx.db.query("trips").withIndex("by_owner", (q) => q.eq("ownerId", userId)).collect();
     return await Promise.all(trips.sort((a, b) => b.updatedAt - a.updatedAt).map(async (trip) => {
-      const photos = await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect();
-      return { _id: trip._id, title: trip.title, published: trip.published, updatedAt: trip.updatedAt, photoCount: photos.length };
+      const photoCount = trip.photoCount ?? (await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect()).length;
+      return { _id: trip._id, title: trip.title, published: trip.published, updatedAt: trip.updatedAt, photoCount };
     }));
   },
 });
@@ -57,23 +106,20 @@ export const getOne = query({
   handler: async (ctx, { tripId }) => await hydratedTrip(ctx, await requireOwnedTrip(ctx, tripId)),
 });
 
-export const getMine = query({
-  args: {},
-  handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
-    const trip = await ctx.db.query("trips").withIndex("by_owner", (q) => q.eq("ownerId", userId)).first();
-    if (trip === null) return null;
-    return await hydratedTrip(ctx, trip);
-  },
-});
-
 export const create = mutation({
-  args: { title: v.string() },
+  args: { title: v.optional(v.string()) },
   handler: async (ctx, { title }) => {
     const userId = await requireUserId(ctx);
-    const cleanTitle = title.trim();
-    if (!cleanTitle) throw new ConvexError("Give this trip a name.");
-    return await ctx.db.insert("trips", { ownerId: userId, title: cleanTitle, published: false, updatedAt: Date.now() });
+    const cleanTitle = title?.trim() || "Untitled journey";
+    return await ctx.db.insert("trips", {
+      ownerId: userId,
+      title: cleanTitle,
+      published: false,
+      processingStatus: "selecting",
+      photoCount: 0,
+      processedPhotoCount: 0,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -87,48 +133,84 @@ export const updateTitle = mutation({
   },
 });
 
+export const setProcessingStatus = mutation({
+  args: { tripId: v.id("trips"), status: processingStatus, processedPhotoCount: v.optional(v.number()) },
+  handler: async (ctx, { tripId, status, processedPhotoCount }) => {
+    await requireOwnedTrip(ctx, tripId);
+    await ctx.db.patch(tripId, {
+      processingStatus: status,
+      ...(processedPhotoCount === undefined ? {} : { processedPhotoCount }),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const generateUploadUrl = mutation({
   args: { tripId: v.id("trips") },
   handler: async (ctx, { tripId }) => {
-    await requireOwnedTrip(ctx, tripId);
-    const photos = await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect();
-    if (photos.length >= MAX_PHOTOS) throw new ConvexError("This first trip can hold up to six photos.");
+    const trip = await requireOwnedTrip(ctx, tripId);
+    const currentCount = trip.photoCount ?? (await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect()).length;
+    if (currentCount >= MAX_PHOTOS) throw new ConvexError(`A trip can hold up to ${MAX_PHOTOS} photos.`);
     return await ctx.storage.generateUploadUrl();
   },
 });
 
+const photoMetadataArgs = {
+  capturedAt: v.optional(v.number()),
+  dateKey: v.string(),
+  latitude: v.optional(v.number()),
+  longitude: v.optional(v.number()),
+  hasDateMetadata: v.boolean(),
+  hasGpsMetadata: v.boolean(),
+  orientation: v.optional(v.number()),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  fileType: v.string(),
+  fileSize: v.number(),
+  exactHash: v.optional(v.string()),
+  visualHash: v.optional(v.string()),
+};
+
 export const addPhoto = mutation({
   args: {
-    tripId: v.id("trips"), storageId: v.id("_storage"), fileName: v.string(),
-    capturedAt: v.optional(v.number()), dateKey: v.string(),
-    latitude: v.optional(v.number()), longitude: v.optional(v.number()),
-    hasDateMetadata: v.boolean(), hasGpsMetadata: v.boolean(),
+    tripId: v.id("trips"),
+    storageId: v.id("_storage"),
+    fileName: v.string(),
+    order: v.number(),
+    ...photoMetadataArgs,
   },
   handler: async (ctx, args) => {
-    await requireOwnedTrip(ctx, args.tripId);
+    const trip = await requireOwnedTrip(ctx, args.tripId);
     const photos = await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", args.tripId)).collect();
-    if (photos.length >= MAX_PHOTOS) {
+    if (photos.length >= MAX_PHOTOS || args.order < 0 || args.order >= MAX_PHOTOS || args.fileSize > MAX_FILE_SIZE) {
       await ctx.storage.delete(args.storageId);
-      throw new ConvexError("This first trip can hold up to six photos.");
+      throw new ConvexError(args.fileSize > MAX_FILE_SIZE ? "This photo is larger than 50 MB." : `A trip can hold up to ${MAX_PHOTOS} photos.`);
     }
-    await ctx.db.insert("photos", { ...args, fileName: args.fileName.slice(0, 160), order: photos.length });
+    await ctx.db.insert("photos", { ...args, fileName: args.fileName.slice(0, 160) });
+    await ctx.db.patch(trip._id, { photoCount: photos.length + 1, processedPhotoCount: photos.length + 1, updatedAt: Date.now() });
   },
 });
 
 export const updatePhotoMetadata = mutation({
-  args: {
-    photoId: v.id("photos"), capturedAt: v.optional(v.number()), dateKey: v.string(),
-    latitude: v.optional(v.number()), longitude: v.optional(v.number()),
-    hasDateMetadata: v.boolean(), hasGpsMetadata: v.boolean(),
-  },
+  args: { photoId: v.id("photos"), ...photoMetadataArgs },
   handler: async (ctx, args) => {
     const photo = await ctx.db.get(args.photoId);
     if (photo === null) throw new ConvexError("Photo not found.");
     await requireOwnedTrip(ctx, photo.tripId);
     await ctx.db.patch(photo._id, {
-      capturedAt: args.capturedAt, dateKey: args.dateKey,
-      latitude: args.latitude, longitude: args.longitude,
-      hasDateMetadata: args.hasDateMetadata, hasGpsMetadata: args.hasGpsMetadata,
+      capturedAt: args.capturedAt,
+      dateKey: args.dateKey,
+      latitude: args.latitude,
+      longitude: args.longitude,
+      hasDateMetadata: args.hasDateMetadata,
+      hasGpsMetadata: args.hasGpsMetadata,
+      orientation: args.orientation,
+      width: args.width,
+      height: args.height,
+      fileType: args.fileType,
+      fileSize: args.fileSize,
+      exactHash: args.exactHash,
+      visualHash: args.visualHash,
     });
   },
 });
@@ -136,24 +218,33 @@ export const updatePhotoMetadata = mutation({
 export const rebuildDays = mutation({
   args: { tripId: v.id("trips") },
   handler: async (ctx, { tripId }) => {
-    await requireOwnedTrip(ctx, tripId);
+    const trip = await requireOwnedTrip(ctx, tripId);
     const [photos, existingDays] = await Promise.all([
       ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
       ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
     ]);
     const sorted = photos.sort((a, b) => photoTime(a) - photoTime(b) || a.order - b.order);
     const dateKeys = [...new Set(sorted.map((photo) => photo.dateKey ?? "undated"))];
+    const usedDays = new Set<Id<"days">>();
     for (const [index, dateKey] of dateKeys.entries()) {
       const groupPhotos = sorted.filter((photo) => (photo.dateKey ?? "undated") === dateKey);
       const representative = groupPhotos.find((photo) => photo.latitude !== undefined && photo.longitude !== undefined);
       const existing = existingDays.find((day) => day.dateKey === dateKey);
-      const displayDate = dateKey === "undated" ? "" : new Intl.DateTimeFormat("en", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${dateKey}T12:00:00Z`));
       if (existing === undefined) {
-        await ctx.db.insert("days", {
-          tripId, dateKey, dayNumber: index + 1, displayDate, place: "", placeSource: "missing", memory: "",
-          representativeLatitude: representative?.latitude, representativeLongitude: representative?.longitude,
+        const dayId = await ctx.db.insert("days", {
+          tripId,
+          dateKey,
+          dayNumber: index + 1,
+          displayDate: displayDate(dateKey),
+          place: "",
+          placeSource: "missing",
+          memory: "",
+          representativeLatitude: representative?.latitude,
+          representativeLongitude: representative?.longitude,
         });
+        usedDays.add(dayId);
       } else {
+        usedDays.add(existing._id);
         const coordinateChanged = existing.representativeLatitude !== representative?.latitude || existing.representativeLongitude !== representative?.longitude;
         await ctx.db.patch(existing._id, {
           dayNumber: index + 1,
@@ -163,20 +254,118 @@ export const rebuildDays = mutation({
         });
       }
     }
+    const captured = sorted.flatMap((photo) => photo.capturedAt === undefined ? [] : [photo.capturedAt]);
+    await ctx.db.patch(trip._id, {
+      processingStatus: "grouping",
+      startDate: captured.length ? Math.min(...captured) : undefined,
+      endDate: captured.length ? Math.max(...captured) : undefined,
+      photoCount: photos.length,
+      updatedAt: Date.now(),
+    });
+    return { days: dateKeys.length, missingDates: photos.filter((photo) => !photo.hasDateMetadata).length };
+  },
+});
+
+export const rebuildMoments = mutation({
+  args: { tripId: v.id("trips") },
+  handler: async (ctx, { tripId }) => {
+    const trip = await requireOwnedTrip(ctx, tripId);
+    const [photos, days, existingMoments] = await Promise.all([
+      ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
+      ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
+      ctx.db.query("moments").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
+    ]);
+    const reconstructed = groupPhotosIntoMoments(photos.map((photo) => ({
+      id: photo._id,
+      order: photo.order,
+      capturedAt: photo.capturedAt,
+      dateKey: photo.dateKey,
+      latitude: photo.latitude,
+      longitude: photo.longitude,
+      exactHash: photo.exactHash,
+      visualHash: photo.visualHash,
+      width: photo.width,
+      height: photo.height,
+    })));
+    const dayByDate = new Map(days.map((day) => [day.dateKey, day]));
+    const existingByKey = new Map(existingMoments.map((moment) => [moment.key, moment]));
+    const retained = new Set<Id<"moments">>();
+    for (const [index, moment] of reconstructed.entries()) {
+      const day = dayByDate.get(moment.dateKey);
+      if (!day) throw new ConvexError("A reconstructed day is missing.");
+      const photoIds = moment.photoIds as Id<"photos">[];
+      const representativePhotoId = moment.representativePhotoId as Id<"photos">;
+      const existing = existingByKey.get(moment.key);
+      if (existing) {
+        retained.add(existing._id);
+        await ctx.db.patch(existing._id, {
+          dayId: day._id,
+          sortOrder: index,
+          startTime: moment.startTime,
+          photoIds,
+          representativePhotoId,
+        });
+      } else {
+        const momentId = await ctx.db.insert("moments", {
+          tripId,
+          dayId: day._id,
+          key: moment.key,
+          dateKey: moment.dateKey,
+          sortOrder: index,
+          startTime: moment.startTime,
+          photoIds,
+          representativePhotoId,
+          memory: "",
+          recommendation: "",
+          warning: "",
+          detail: "",
+        });
+        retained.add(momentId);
+      }
+    }
+    for (const moment of existingMoments) {
+      if (!retained.has(moment._id)) await ctx.db.delete(moment._id);
+    }
+    await ctx.db.patch(trip._id, { processingStatus: "shaping", updatedAt: Date.now() });
+    return { moments: reconstructed.length, groupedPhotos: groupedPhotoCount(reconstructed) };
   },
 });
 
 export const saveDay = mutation({
-  args: { dayId: v.id("days"), displayDate: v.string(), place: v.string(), memory: v.string() },
+  args: { dayId: v.id("days"), displayDate: v.string(), place: v.string() },
   handler: async (ctx, args) => {
     const day = await ctx.db.get(args.dayId);
     if (day === null) throw new ConvexError("Day not found.");
     await requireOwnedTrip(ctx, day.tripId);
-    const displayDate = args.displayDate.trim();
     const place = args.place.trim();
-    if (!displayDate || !place) throw new ConvexError("Confirm the date and place.");
-    await ctx.db.patch(day._id, { displayDate, place, memory: args.memory.trim(), placeSource: place === day.place ? day.placeSource : "manual" });
+    await ctx.db.patch(day._id, {
+      displayDate: args.displayDate.trim(),
+      place,
+      placeSource: place === day.place ? day.placeSource : place ? "manual" : "missing",
+    });
     await ctx.db.patch(day.tripId, { updatedAt: Date.now() });
+  },
+});
+
+export const saveMoment = mutation({
+  args: {
+    momentId: v.id("moments"),
+    memory: v.string(),
+    recommendation: v.string(),
+    warning: v.string(),
+    detail: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const moment = await ctx.db.get(args.momentId);
+    if (moment === null) throw new ConvexError("Moment not found.");
+    await requireOwnedTrip(ctx, moment.tripId);
+    await ctx.db.patch(moment._id, {
+      memory: args.memory.trim().slice(0, 2_000),
+      recommendation: args.recommendation.trim().slice(0, 2_000),
+      warning: args.warning.trim().slice(0, 2_000),
+      detail: args.detail.trim().slice(0, 2_000),
+    });
+    await ctx.db.patch(moment.tripId, { updatedAt: Date.now() });
   },
 });
 
@@ -220,7 +409,11 @@ function keyFor(latitude: number, longitude: number) {
 function placeFromNominatim(value: unknown) {
   const response = value as { address?: Record<string, string>; display_name?: string };
   const address = response.address ?? {};
-  const parts = [address.neighbourhood ?? address.suburb ?? address.city_district, address.city ?? address.town ?? address.village ?? address.county, address.country].filter(Boolean);
+  const parts = [
+    address.neighbourhood ?? address.suburb ?? address.city_district,
+    address.city ?? address.town ?? address.village ?? address.county,
+    address.country,
+  ].filter(Boolean);
   return [...new Set(parts)].join(", ") || response.display_name || "";
 }
 
@@ -243,8 +436,17 @@ export const resolvePlaces = action({
       }
       if (networkRequests > 0) await new Promise((resolve) => setTimeout(resolve, 1100));
       const url = new URL("https://nominatim.openstreetmap.org/reverse");
-      url.searchParams.set("format", "jsonv2"); url.searchParams.set("lat", String(latitude)); url.searchParams.set("lon", String(longitude)); url.searchParams.set("zoom", "14"); url.searchParams.set("addressdetails", "1");
-      const response = await fetch(url, { headers: { "User-Agent": `Triplog/0.1 (${process.env.SITE_URL ?? "development"})`, "Accept-Language": "en" } });
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("lat", String(latitude));
+      url.searchParams.set("lon", String(longitude));
+      url.searchParams.set("zoom", "14");
+      url.searchParams.set("addressdetails", "1");
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": `Triplog/0.1 (${process.env.SITE_URL ?? "development"})`,
+          "Accept-Language": "en",
+        },
+      });
       networkRequests += 1;
       if (!response.ok) continue;
       const place = placeFromNominatim(await response.json());
@@ -254,43 +456,110 @@ export const resolvePlaces = action({
   },
 });
 
+function hasTravellerWords(moment: Doc<"moments">) {
+  return [moment.memory, moment.recommendation, moment.warning, moment.detail].some((value) => value.trim());
+}
+
 export const publish = mutation({
   args: { tripId: v.id("trips") },
   handler: async (ctx, { tripId }) => {
     const trip = await requireOwnedTrip(ctx, tripId);
-    const [photo, days] = await Promise.all([
+    const [photo, days, moments, existingLinks] = await Promise.all([
       ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).first(),
       ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
+      ctx.db.query("moments").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
+      ctx.db.query("shareLinks").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
     ]);
-    if (photo === null || days.length === 0 || days.some((day) => !day.displayDate || !day.place || !day.memory)) throw new ConvexError("Complete every day before publishing.");
-    const shareToken = trip.shareToken ?? crypto.randomUUID();
-    await ctx.db.patch(tripId, { published: true, shareToken, updatedAt: Date.now() });
+    if (trip.title.trim() === "Untitled journey") throw new ConvexError("Give this trip a name before sharing.");
+    if (photo === null || days.length === 0 || moments.length === 0) throw new ConvexError("Finish reconstructing this journey before sharing.");
+    if (!moments.some(hasTravellerWords)) throw new ConvexError("Add at least one detail in your own words before sharing.");
+    const now = Date.now();
+    for (const link of existingLinks) {
+      if (link.revokedAt === undefined) await ctx.db.patch(link._id, { revokedAt: now });
+    }
+    const shareToken = crypto.randomUUID();
+    await ctx.db.insert("shareLinks", { tripId, token: shareToken, createdAt: now });
+    await ctx.db.patch(tripId, { published: true, shareToken, processingStatus: "ready", updatedAt: now });
     return shareToken;
   },
 });
 
 export const unpublish = mutation({
   args: { tripId: v.id("trips") },
-  handler: async (ctx, { tripId }) => { await requireOwnedTrip(ctx, tripId); await ctx.db.patch(tripId, { published: false, updatedAt: Date.now() }); },
+  handler: async (ctx, { tripId }) => {
+    await requireOwnedTrip(ctx, tripId);
+    const links = await ctx.db.query("shareLinks").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect();
+    const now = Date.now();
+    for (const link of links) {
+      if (link.revokedAt === undefined) await ctx.db.patch(link._id, { revokedAt: now });
+    }
+    await ctx.db.patch(tripId, { published: false, shareToken: undefined, updatedAt: now });
+  },
 });
 
-export const getPublic = query({
+async function requireActiveShare(ctx: QueryCtx | MutationCtx, token: string) {
+  const viewerId = await requireUserId(ctx);
+  const link = await ctx.db.query("shareLinks").withIndex("by_token", (q) => q.eq("token", token)).unique();
+  if (link === null || link.revokedAt !== undefined) return null;
+  const trip = await ctx.db.get(link.tripId);
+  if (trip === null || !trip.published || trip.shareToken !== token) return null;
+  return { viewerId, link, trip };
+}
+
+export const getShared = query({
   args: { shareToken: v.string() },
   handler: async (ctx, { shareToken }) => {
-    const trip = await ctx.db.query("trips").withIndex("by_share_token", (q) => q.eq("shareToken", shareToken)).unique();
-    if (trip === null || !trip.published) return null;
-    const [days, photos] = await Promise.all([
-      ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect(),
-      ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect(),
-    ]);
-    if (days.length === 0 || days.some((day) => !day.displayDate || !day.place || !day.memory)) return null;
-    const sortedPhotos = photos.sort((a, b) => photoTime(a) - photoTime(b) || a.order - b.order);
+    const access = await requireActiveShare(ctx, shareToken);
+    if (access === null) return null;
+    const trip = await hydratedTrip(ctx, access.trip);
     return {
       title: trip.title,
-      days: await Promise.all(days.sort((a, b) => a.dayNumber - b.dayNumber).map(async (day) => ({
-        dayNumber: day.dayNumber, displayDate: day.displayDate, place: day.place, memory: day.memory,
-        photos: await Promise.all(sortedPhotos.filter((photo) => (photo.dateKey ?? "undated") === day.dateKey).map(async (photo) => ({ url: await ctx.storage.getUrl(photo.storageId), alt: `${day.place} — ${photo.fileName}` }))),
-      }))),
+      startDate: trip.startDate,
+      endDate: trip.endDate,
+      photoCount: trip.photoCount,
+      groupedPhotoCount: trip.groupedPhotoCount,
+      days: trip.days.map((day) => ({
+        dayNumber: day.dayNumber,
+        displayDate: day.displayDate,
+        place: day.place,
+        moments: day.moments.map((moment) => ({
+          startTime: moment.startTime,
+          memory: moment.memory,
+          recommendation: moment.recommendation,
+          warning: moment.warning,
+          detail: moment.detail,
+          representativePhoto: moment.representativePhoto ? {
+            url: moment.representativePhoto.url,
+            fileName: moment.representativePhoto.fileName,
+            width: moment.representativePhoto.width,
+            height: moment.representativePhoto.height,
+          } : null,
+          photos: moment.photos.map((photo) => ({
+            url: photo.url,
+            fileName: photo.fileName,
+            width: photo.width,
+            height: photo.height,
+          })),
+        })),
+      })),
     };
+  },
+});
+
+export const recordShareAccess = mutation({
+  args: { shareToken: v.string() },
+  handler: async (ctx, { shareToken }) => {
+    const access = await requireActiveShare(ctx, shareToken);
+    if (access === null) throw new ConvexError("This journey is private.");
+    const existing = await ctx.db.query("shareAccess").withIndex("by_link_viewer", (q) => q.eq("shareLinkId", access.link._id).eq("viewerId", access.viewerId)).unique();
+    const now = Date.now();
+    if (existing) await ctx.db.patch(existing._id, { lastViewedAt: now });
+    else await ctx.db.insert("shareAccess", {
+      tripId: access.trip._id,
+      shareLinkId: access.link._id,
+      viewerId: access.viewerId,
+      firstViewedAt: now,
+      lastViewedAt: now,
+    });
   },
 });

@@ -6,6 +6,7 @@ import { useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { JourneyWorkspace } from "./journey-workspace";
+import { JourneysHome } from "./journeys-home";
 import { PhotoOnboarding } from "./photo-onboarding";
 
 export function TripEditor() {
@@ -13,10 +14,18 @@ export function TripEditor() {
   const { signOut } = useAuthActions();
   const [selectedId, setSelectedId] = useState<Id<"trips"> | null>(null);
   const [startingNew, setStartingNew] = useState(false);
-  const activeId = startingNew ? undefined : selectedId ?? trips?.[0]?._id;
+  const activeId = startingNew ? undefined : selectedId ?? undefined;
   const trip = useQuery(api.trips.getOne, activeId ? { tripId: activeId } : "skip");
 
-  if (trips === undefined || (activeId && trip === undefined)) return <div className="center-message">Opening your private trips…</div>;
+  async function leaveTriplog() {
+    try {
+      await signOut();
+    } finally {
+      window.location.replace("/");
+    }
+  }
+
+  if (trips === undefined) return <div className="center-message">Opening your private trips…</div>;
 
   if (!trips.length || startingNew) {
     return (
@@ -27,6 +36,19 @@ export function TripEditor() {
       />
     );
   }
+
+  if (selectedId === null) {
+    return (
+      <JourneysHome
+        trips={trips}
+        onContinue={setSelectedId}
+        onCreate={() => setStartingNew(true)}
+        onSignOut={() => void leaveTriplog()}
+      />
+    );
+  }
+
+  if (trip === undefined) return <div className="center-message">Opening this journey…</div>;
 
   if (!trip) return <div className="center-message">This trip could not be opened.</div>;
 
@@ -53,7 +75,8 @@ export function TripEditor() {
       trips={trips}
       onSelect={setSelectedId}
       onNew={() => setStartingNew(true)}
-      onSignOut={() => void signOut()}
+      onHome={() => setSelectedId(null)}
+      onSignOut={() => void leaveTriplog()}
     />
   );
 }

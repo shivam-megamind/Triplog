@@ -145,12 +145,14 @@ export function JourneyWorkspace({
   trips,
   onSelect,
   onNew,
+  onHome,
   onSignOut,
 }: {
   trip: Trip;
   trips: TripSummary[];
   onSelect: (tripId: Id<"trips">) => void;
   onNew: () => void;
+  onHome: () => void;
   onSignOut: () => void;
 }) {
   const updateTitle = useMutation(api.trips.updateTitle);
@@ -212,6 +214,7 @@ export function JourneyWorkspace({
           <button className={mode === "book" ? "workspace-tab active" : "workspace-tab"} onClick={() => setMode("book")}>Preview book</button>
         </nav>
         <div className="trip-nav">
+          <button className="text-button" onClick={onHome}>Your journeys</button>
           <label>Current trip<select value={trip._id} onChange={(event) => onSelect(event.target.value as Id<"trips">)}>{trips.map((item) => <option key={item._id} value={item._id}>{item.title}</option>)}</select></label>
           <button className="secondary-button compact-button" onClick={onNew}>New trip</button>
           <button className="text-button" onClick={onSignOut}>Sign out</button>

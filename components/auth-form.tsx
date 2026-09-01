@@ -3,9 +3,17 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { FormEvent, useState } from "react";
 
-export function AuthForm({ context = "book" }: { context?: "book" | "share" }) {
+export function AuthForm({
+  context = "book",
+  initialMode = "signUp",
+  onSuccess,
+}: {
+  context?: "book" | "share";
+  initialMode?: "signUp" | "signIn";
+  onSuccess?: () => void;
+}) {
   const { signIn } = useAuthActions();
-  const [mode, setMode] = useState<"signUp" | "signIn">("signUp");
+  const [mode, setMode] = useState<"signUp" | "signIn">(initialMode);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -17,6 +25,7 @@ export function AuthForm({ context = "book" }: { context?: "book" | "share" }) {
     form.set("flow", mode);
     try {
       await signIn("password", form);
+      onSuccess?.();
     } catch {
       setError(mode === "signUp" ? "That email may already have an account. Try signing in." : "The email or password did not match.");
       setBusy(false);

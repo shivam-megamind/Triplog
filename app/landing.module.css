@@ -80,6 +80,27 @@
   letter-spacing: 0.04em;
 }
 
+.heroNav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.signIn {
+  min-height: 44px;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 250, 240, 0.54);
+  background: transparent;
+  color: #fffaf0;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.signIn:hover {
+  border-bottom-color: #fffaf0;
+}
+
 .heroCopy {
   width: min(100%, 720px);
   margin-top: 98px;

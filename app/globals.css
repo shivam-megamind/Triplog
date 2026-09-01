@@ -59,6 +59,26 @@ textarea { resize: vertical; line-height: 1.55; }
 .form-error { background: #f2ded8; color: var(--error); }
 .form-success { background: #dce9e1; color: var(--success); }
 
+.landing-auth-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; overflow-y: auto; background: rgba(7,25,28,.78); }
+.landing-auth-dialog { position: relative; width: min(1040px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; background: var(--paper); box-shadow: 0 30px 100px rgba(0,0,0,.35); }
+.landing-auth-close { position: absolute; z-index: 2; top: 16px; right: 18px; min-height: 42px; padding: 8px 10px; border: 0; background: transparent; color: var(--ink-faint); font-size: .74rem; text-decoration: underline; text-underline-offset: 4px; }
+.landing-auth-dialog .auth-shell { min-height: 0; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .95fr); }
+.landing-auth-dialog .auth-intro { min-height: 660px; padding: clamp(34px, 5vw, 68px); }
+.landing-auth-dialog .auth-intro h1 { font-size: clamp(3rem, 5vw, 5.8rem); }
+.landing-auth-dialog .auth-card { padding: clamp(48px, 6vw, 76px); }
+
+.journeys-home { min-height: 100vh; padding-bottom: 96px; background: var(--paper); }
+.journeys-home-header { min-height: 76px; padding: 16px clamp(20px, 5vw, 72px); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(29,30,27,.11); }
+.journeys-home-intro { max-width: 1180px; margin: 0 auto; padding: clamp(72px, 10vw, 132px) clamp(20px, 5vw, 56px) 54px; display: flex; align-items: end; justify-content: space-between; gap: 36px; }
+.journeys-home-intro h1 { margin: 0; font: 500 clamp(3.7rem, 8vw, 7rem)/.9 var(--serif); letter-spacing: -.055em; }
+.journeys-home-intro > div > p:last-child { max-width: 610px; margin: 24px 0 0; color: var(--ink-soft); font-size: 1rem; line-height: 1.65; }
+.journey-library { max-width: 1068px; margin: 0 auto; padding: 0 clamp(20px, 5vw, 56px); display: grid; gap: 1px; }
+.journey-library-item { padding: clamp(24px, 4vw, 38px); display: grid; grid-template-columns: 150px minmax(0, 1fr) auto; align-items: center; gap: 28px; background: rgba(255,255,255,.3); border-top: 1px solid rgba(29,30,27,.12); }
+.journey-library-item:last-child { border-bottom: 1px solid rgba(29,30,27,.12); }
+.journey-library-status { color: var(--ink-faint); font-size: .7rem; }
+.journey-library-item h2 { margin: 0; font: 500 clamp(1.8rem, 4vw, 2.8rem)/1 var(--serif); letter-spacing: -.035em; }
+.journey-library-item p { margin: 10px 0 0; color: var(--ink-faint); font-size: .74rem; }
+
 .topbar { min-height: 76px; display: flex; align-items: center; justify-content: space-between; padding: 12px clamp(20px, 4vw, 56px); border-bottom: 1px solid rgba(29,30,27,.12); }
 .topbar > div { display: flex; align-items: baseline; gap: 20px; }
 .topbar-actions, .trip-nav { display: flex; align-items: end; gap: 12px; }
@@ -262,6 +282,8 @@ textarea { resize: vertical; line-height: 1.55; }
 .book-message { max-width: 1120px; margin: 18px auto 0; }
 
 @media (max-width: 900px) {
+  .landing-auth-dialog .auth-shell { grid-template-columns: 1fr; }
+  .landing-auth-dialog .auth-intro { min-height: 420px; }
   .auth-shell { grid-template-columns: 1fr; }
   .auth-intro { min-height: 58vh; }
   .auth-card { width: 100%; max-width: 620px; margin: auto; }
@@ -283,6 +305,14 @@ textarea { resize: vertical; line-height: 1.55; }
 }
 
 @media (max-width: 600px) {
+  .landing-auth-backdrop { padding: 0; place-items: stretch; }
+  .landing-auth-dialog { max-height: 100vh; }
+  .landing-auth-dialog .auth-intro { min-height: 360px; }
+  .landing-auth-dialog .auth-card { padding: 44px 22px 56px; }
+  .journeys-home-intro { align-items: stretch; flex-direction: column; }
+  .journeys-home-intro .primary-button { width: 100%; }
+  .journey-library-item { grid-template-columns: 1fr; gap: 18px; }
+  .journey-library-item .secondary-button { width: 100%; }
   .auth-intro { padding: 28px 22px 40px; }
   .auth-intro h1 { font-size: 3.5rem; }
   .auth-card, .editor-panel, .new-trip-card { padding: 32px 20px 56px; }

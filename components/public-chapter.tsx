@@ -3,8 +3,8 @@
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
 import { useEffect } from "react";
 import { api } from "@/convex/_generated/api";
-import { AuthForm } from "./auth-form";
 import { Chapter } from "./chapter";
+import { SignedOutRedirect } from "./signed-out-redirect";
 
 function SharedReader({ token }: { token: string }) {
   const trip = useQuery(api.trips.getShared, { shareToken: token });
@@ -31,7 +31,7 @@ export function PublicChapter({ token }: { token: string }) {
   return (
     <>
       <AuthLoading><main className="center-message">Checking this private link…</main></AuthLoading>
-      <Unauthenticated><AuthForm context="share" /></Unauthenticated>
+      <Unauthenticated><SignedOutRedirect returnTo={`/share/${token}`} /></Unauthenticated>
       <Authenticated><SharedReader token={token} /></Authenticated>
     </>
   );

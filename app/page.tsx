@@ -1,8 +1,6 @@
 import Image from "next/image";
-import Link from "next/link";
+import { LandingAuthAction } from "@/components/landing-auth-action";
 import styles from "./landing.module.css";
-
-const bookHref = "/book";
 
 export default function Home() {
   return (
@@ -19,7 +17,10 @@ export default function Home() {
         <div className={styles.heroShade} />
         <header className={styles.heroHeader}>
           <p className={styles.wordmark}>Triplog</p>
-          <p className={styles.headerNote}>Built from your photos. Told in your voice.</p>
+          <div className={styles.heroNav}>
+            <p className={styles.headerNote}>Built from your photos. Told in your voice.</p>
+            <LandingAuthAction className={styles.signIn} mode="signIn" authenticatedLabel="Your journeys" respondToRedirect>Sign in</LandingAuthAction>
+          </div>
         </header>
 
         <div className={styles.heroCopy}>
@@ -29,7 +30,7 @@ export default function Home() {
             Drop in the photos from one trip. Triplog reconstructs the days, places, and moments—then gives you a beautiful travel book to make your own.
           </p>
           <p className={styles.trust}>Private by default. You choose what to keep, edit, and share.</p>
-          <Link className={styles.cta} href={bookHref}>Turn a trip into a book</Link>
+          <LandingAuthAction className={styles.cta} mode="signUp">Turn a trip into a book</LandingAuthAction>
         </div>
 
         <div className={styles.heroBook} aria-label="Example Triplog travel book page">
@@ -156,7 +157,7 @@ export default function Home() {
 
         <div className={styles.finalAction}>
           <p>Your photos are already waiting.</p>
-          <Link className={`${styles.cta} ${styles.darkCta}`} href={bookHref}>Turn a trip into a book</Link>
+          <LandingAuthAction className={`${styles.cta} ${styles.darkCta}`} mode="signUp">Turn a trip into a book</LandingAuthAction>
         </div>
       </section>
     </main>

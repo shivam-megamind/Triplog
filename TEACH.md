@@ -1,13 +1,118 @@
 # How this project works
 
-Milestone 1 is still being built. This document will be completed after its checks pass.
+## Milestone 1 — public landing page
 
-## Public landing page
+The existing landing page was retained without a redesign or source change.
 
-- `/` is the public introduction to Triplog. It explains the photo-to-book journey in four moments and stores no personal information.
-- Both “Turn a trip into a book” links open `/book`, where the existing sign-in and private trip-building flow continues.
-- `app/page.tsx` holds the landing-page content and its four sections. `app/landing.module.css` holds the page-specific visual design, mobile layout, focus style, and reduced-motion behaviour.
-- `public/images` holds the travel photographs used in the page previews. They are display material only and are not connected to Convex.
-- Convex is not involved until someone reaches `/book`. The landing page is a static page, meaning Next.js prepares it in advance so it can open quickly.
-- If the landing page disappeared, saved trips would remain safe in Convex and the private builder would still exist at `/book`. If `/book` disappeared, the landing page would still appear but its two actions would have nowhere useful to go.
-- Validation covered the automated tests, lint, type checking, production build, the two action links, image loading, keyboard focus, reduced motion, mobile and desktop widths, horizontal overflow, and browser errors.
+- `/` is the public introduction to Triplog.
+- Its main actions let a new visitor create an account and a returning visitor sign in.
+- Authenticated visitors can continue to `/book`.
+- The page explains that Triplog reconstructs a journey from photos, keeps it private by default, and lets the traveller decide what to share.
+- `app/page.tsx` contains the landing content.
+- `app/landing.module.css` contains the landing-only responsive design.
+- `public/images` contains only the example photographs used on the landing page; they are not connected to a user's private photos.
+
+The landing page is separate from the private product. A failure in the private builder does not expose journey data through the landing page.
+
+## Validation status
+
+Milestone 1's automated checks pass. The existing saved desktop and mobile screenshots confirm the retained responsive layout. Fresh interactive browser testing was unavailable in this session and remains the only validation limitation for this milestone.
+
+## Milestone 2 — authentication
+
+The existing account and session flow was retained without a redesign or source change.
+
+- A visitor opens Create account or Sign in from the landing page.
+- `components/auth-form.tsx` sends the email, password, and selected flow to Convex Auth.
+- After successful authentication, `components/landing-auth-action.tsx` returns the traveller to `/book` or to the shared journey that originally requested authentication.
+- `app/book/page.tsx` shows the private product only to an authenticated visitor.
+- `components/trip-editor.tsx` signs the traveller out and then replaces the current browser location with `/`, so a signed-out session returns to the landing page.
+- The password must contain at least eight characters. Email verification and password reset are not part of this V1 flow.
+
+The authentication interface is separate from journey ownership checks. Convex queries and changes still verify the signed-in user's identity before returning or changing private journey data.
+
+## Milestone 2 validation status
+
+The retained authentication files have no source differences. Existing end-to-end evidence covers creating an account, signing in, and reaching the private product. Fresh automated click testing was unavailable because no connected browser was available in this session; the user-facing review should confirm the full sign-up, sign-out, and sign-back-in loop.
+
+### Phase 1 blocker repair
+
+The Sign in and Create journey buttons were rendered in their normal disabled loading state, but the browser could not hydrate them because one JavaScript file referenced by the running server returned HTTP 500. The server had remained open while `next build` replaced its `.next` output, leaving the running process with an old in-memory asset list and a newly generated folder. Phase 1 CSS did not cover, hide, or disable the buttons.
+
+The repair was operational: stop the old server, run a clean production build, and restart `next start` against that build. `npm run test:server-assets` now checks both `/` and `/book` plus every JavaScript file they reference; all 12 currently return HTTP 200. No landing or authentication component was changed. A connected browser was still unavailable, so the live sign-in, signup, redirect, and sign-out loop remains a user confirmation rather than an automated claim.
+
+### Phase 1 reconstruction-navigation blocker
+
+Journey navigation now follows the stored processing state rather than using the number of visible moments as a shortcut. A queued or actively processing journey shows a small reconstruction status screen and opens its timeline automatically when Convex changes it to ready. A ready journey opens the timeline even when it has zero moments, because that state may mean every preserved photo is waiting in **Possibly unrelated** or another review group.
+
+The upload callback keeps the current journey selected instead of returning to **Your journeys**. **Add or retry photos** remains an explicit timeline action, and **Continue reconstruction** appears only when saved photos are in a state that genuinely needs reconstruction. The state-transition tests cover upload completion, active reconstruction, ready timeline opening, reopening, and intentional photo management.
+
+### Phase 1 empty-timeline blocker
+
+The Goa journey proves that **Ready** and “has visible timeline moments” are different facts. Its six photos all report 20 January 2025, while the entered journey dates are 20–26 January 2024. Triplog correctly keeps those photos in **Possibly unrelated**, so the saved journey can be Ready with zero dates, stops, or moments.
+
+The timeline workspace now normalises missing collections from older or cached journey shapes before rendering. A Ready journey with no visible moments shows a clear review state and a direct **Check these photos** action. An older journey that has moments but no stop structure shows the existing rebuild action. Restoring a possibly unrelated photo uses the saved original and then rebuilds the date, stop, and moment structure; it does not upload another copy or change the entered journey dates.
+
+### Phase 1 trip-detail correction blocker
+
+The Goa analysis was correct: its photos say 20 January 2025 while its saved trip range says 20–26 January 2024. The missing capability was an owner-controlled way to repair the original trip details. **Edit trip details** now opens the three saved fields on the journey card. Nothing changes until **Save and reconstruct** is selected; **Cancel** makes no database change. Convex validates the range again, updates only the destination and dates, rechecks the six existing photo records, and queues reconstruction without touching their stored image files or upload records.
+
+The earlier **Restore all** path became stuck because it ran the first reconstruction steps directly from the page. Those steps deliberately set the status to `shaping`, but that page path never called the final step that changes the status to `ready` or `error`. Restore, placement, rebuild, date correction, and retry now all enter the same Convex background pipeline. That pipeline always attempts the final status change, so a failure produces a visible error with **Retry reconstruction** instead of an endless loading state.
+
+## Milestones 3–5 — journey library and safe draft creation
+
+- Your Journeys now separates owned journeys, journeys shared with the account, and Recently Deleted items.
+- Creating a draft requires a destination and approximate start and end dates. The browser catches missing or reversed dates, and Convex checks them again.
+- A request ID makes a repeated Create tap return the same draft instead of making a duplicate.
+
+## Milestones 6–10 — safe photo intake
+
+- The picker accepts JPEG, PNG, and WebP photos only, rejects files above 50 MB, and rejects an entire selection if it would take the journey above the internal 100-photo safety limit.
+- HEIC and HEIF are rejected with instructions to export as JPEG, PNG, or WebP. V1 does not add a conversion library.
+- Each selected photo has a persistent Convex upload record. Completed photos are skipped on retry; interrupted or failed items can be reselected and matched without restarting successful items.
+- Triplog stores the unchanged original plus separate thumbnail, display, and large WebP copies made in the browser. The interface clearly says this is not a phone or cloud backup.
+- Capture time, GPS, dimensions, duplicate fingerprints, visual fingerprints, and a conservative dark/blurry signal are stored as evidence. GPS coordinates are converted to cached OpenStreetMap place names.
+
+## Milestones 11–17 — reconstruction and review
+
+- Convex background work orders included photos into dates, multiple place-based stops within each date, and chronological moments. Stops use available GPS evidence; photos with a reliable date but no GPS stay on that date under **Location unknown**.
+- The stop sequence is a sequence of photo-backed places, never a claim about the exact path travelled. Triplog does not invent a location when the evidence is missing.
+- Photos clearly outside the entered dates are retained under Possibly unrelated. Photos without a reliable date remain under Unplaced memories. The traveller can restore or place them.
+- Dark or blurry photos are labelled but kept. A traveller-selected primary photo overrides the system suggestion.
+- The journey has automatic, usable, and enriched completion levels. Title and cover suggestions require explicit confirmation.
+- Processing can continue after the browser closes. When it becomes ready, Convex calls Resend once and includes a direct link to that journey. A stored sent time plus Resend's idempotency key prevents duplicates; failed calls retry at most three times.
+
+## Milestones 18–21 — guided builder and timeline experience
+
+- A suggested stop name can be corrected, and a moment can move between existing dates or stops. Those user choices are stored and retained during later reconstruction.
+- Moments can be hidden from the timeline without deleting any original upload.
+- Contextual questions are optional, collapsed until requested, and autosave after a short pause. Unphotographed memories can be added to the relevant stop.
+- The owner and recipient views use a clear mobile-first timeline of dates, stops, moments, selected photos, memories, recommendations, and warnings. They do not use a coffee-table-book, magazine, or PDF layout.
+- Recipient preview excludes Possibly unrelated and Unplaced photos. Publishing requires confirmed destination, dates, title, cover, and at least one recipient preview.
+
+## Milestones 22–27 — account-gated sharing and recovery
+
+- A signed-out person with an active unlisted link sees only the creator name, destination, cover, and dates. The complete journey appears on that same link after account creation or sign-in.
+- Recipient access is read-only and saved under Shared with me. Because both owner and recipient read the same Convex records, later owner edits appear in the existing link.
+- Stop sharing revokes the link and removes every saved recipient-access record.
+- Delete moves a journey to Recently Deleted, revokes sharing immediately, and keeps it recoverable for 30 days. Permanent deletion warns first and erases originals, viewing copies, content, upload records, links, and access. A daily Convex job clears expired items.
+
+## Milestones 28–29 — normal journey size and persistence
+
+- V1 is designed around approximately 10–100 selected photos. The internal 100-photo safety limit is not promoted as a product feature, and any selection that would exceed it is rejected in full.
+- Upload records, processing state, corrections, ordering, memories, sharing state, and recipient access live in Convex rather than browser memory. Edits autosave continuously.
+- A persistence audit in two separate backend sessions returned the same 10 journeys, 31 photos, 13 moments, 4 written memories, and 2 recipient-access records. The temporary audit function was then removed.
+- A real 5–10-photo Phase 1 browser run, a prepared normal 10–100-photo check, and correction/share persistence checks remain required before the affected milestones can be accepted.
+
+## Core Repair Phase 1 validation status
+
+- The automated test suite has 25 passing checks. It covers the internal 100-photo boundary, multiple GPS-backed stops on one date, chronological moment ordering, the **Location unknown** result for a dated photo without GPS, ready-journey navigation after upload and reopening, zero-visible-moment review, out-of-range dates, and older stop-less data.
+- Lint, TypeScript checking, and the production build pass.
+- The protected landing, authentication, redirect, and `/book` route files have the same SHA-256 file hashes recorded before Phase 1. The sign-out handler still signs out and replaces the browser location with `/`.
+- No browser was connected during final validation. Real-photo upload, mobile and desktop appearance, correction persistence after reopening/reconstruction, and the two-account shared journey still need hands-on verification.
+
+## Resend environments
+
+- Development defaults to `Triplog <onboarding@resend.dev>` and `delivered+trip-ready@resend.dev`. The real account email is not contacted in testing mode.
+- Production must have `RESEND_API_KEY`, `RESEND_TEST_MODE=false`, `RESEND_FROM_EMAIL` set to a sender on a verified domain, and `SITE_URL` set to the deployed website origin in the production Convex deployment.
+- No Resend secret is stored in the repository or sent to the browser.

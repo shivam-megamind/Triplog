@@ -1,4 +1,7 @@
+"use client";
+
 import Image from "next/image";
+import { useState } from "react";
 import { formatCaptureTime } from "@/lib/reconstruction";
 
 type BookPhoto = {
@@ -55,20 +58,35 @@ function MomentSpread({ moment, index, draft }: { moment: BookMoment; index: num
   );
 }
 
+function ChapterDaySection({ day, draft }: { day: ChapterDay; draft: boolean }) {
+  const [visibleMoments, setVisibleMoments] = useState(16);
+  const moments = day.moments ?? [];
+  return (
+    <section className="chapter">
+      <header className="chapter-heading"><p className="chapter-kicker">Day {String(day.dayNumber).padStart(2, "0")} <span aria-hidden="true">·</span> {day.displayDate || "Date to confirm"}</p><h2>{day.place || "A place still to name"}</h2></header>
+      {moments.length ? <>{moments.slice(0, visibleMoments).map((moment, index) => <MomentSpread key={`${day.dayNumber}-${index}`} moment={moment} index={index} draft={draft} />)}{moments.length > visibleMoments ? <button className="secondary-button chapter-load-more" onClick={() => setVisibleMoments((count) => count + 16)}>Continue through 16 more moments</button> : null}</> : (
+        <div className="legacy-chapter"><div className={`photo-composition photo-count-${Math.min(day.photos?.length ?? 0, 3)}`}>{day.photos?.length ? day.photos.slice(0, 3).map((photo, index) => photo.url ? <figure className={`photo-frame photo-${index + 1}`} key={`${photo.url}-${index}`}><Image src={photo.url} alt={photo.fileName ?? "A photograph from this trip"} fill sizes={index === 0 ? "(max-width: 720px) 100vw, 60vw" : "(max-width: 720px) 50vw, 30vw"} /></figure> : null) : <div className="photo-empty">Photos from this day will appear here.</div>}</div>{day.memory || draft ? <div className="memory-block"><span className="opening-mark" aria-hidden="true">“</span><p>{day.memory || "Add the part only you remember."}</p></div> : null}</div>
+      )}
+    </section>
+  );
+}
+
 export function Chapter({
   title,
   startDate,
   endDate,
   days,
+  cover: selectedCover,
   draft = false,
 }: {
   title: string;
   startDate?: number;
   endDate?: number;
   days: ChapterDay[];
+  cover?: BookPhoto | null;
   draft?: boolean;
 }) {
-  const cover = days.flatMap((day) => day.moments ?? []).find((moment) => moment.representativePhoto?.url)?.representativePhoto;
+  const cover = selectedCover ?? days.flatMap((day) => day.moments ?? []).find((moment) => moment.representativePhoto?.url)?.representativePhoto;
   return (
     <article className="book">
       <header className={cover?.url ? "book-cover has-photo" : "book-cover"}>
@@ -81,29 +99,7 @@ export function Chapter({
           {draft ? <p className="draft-label">Private preview</p> : null}
         </div>
       </header>
-      {days.length ? days.map((day) => {
-        const moments = day.moments ?? [];
-        return (
-          <section className="chapter" key={`${day.dayNumber}-${day.displayDate}`}>
-            <header className="chapter-heading">
-              <p className="chapter-kicker">Day {String(day.dayNumber).padStart(2, "0")} <span aria-hidden="true">·</span> {day.displayDate || "Date to confirm"}</p>
-              <h2>{day.place || "A place still to name"}</h2>
-            </header>
-            {moments.length ? moments.map((moment, index) => <MomentSpread key={`${day.dayNumber}-${index}`} moment={moment} index={index} draft={draft} />) : (
-              <div className="legacy-chapter">
-                <div className={`photo-composition photo-count-${Math.min(day.photos?.length ?? 0, 3)}`}>
-                  {day.photos?.length ? day.photos.slice(0, 3).map((photo, index) => photo.url ? (
-                    <figure className={`photo-frame photo-${index + 1}`} key={`${photo.url}-${index}`}>
-                      <Image src={photo.url} alt={photo.fileName ?? "A photograph from this trip"} fill sizes={index === 0 ? "(max-width: 720px) 100vw, 60vw" : "(max-width: 720px) 50vw, 30vw"} />
-                    </figure>
-                  ) : null) : <div className="photo-empty">Photos from this day will appear here.</div>}
-                </div>
-                {day.memory || draft ? <div className="memory-block"><span className="opening-mark" aria-hidden="true">“</span><p>{day.memory || "Add the part only you remember."}</p></div> : null}
-              </div>
-            )}
-          </section>
-        );
-      }) : <div className="photo-empty">Upload your photographs to reconstruct the journey.</div>}
+      {days.length ? days.map((day) => <ChapterDaySection key={`${day.dayNumber}-${day.displayDate}`} day={day} draft={draft} />) : <div className="photo-empty">Upload your photographs to reconstruct the journey.</div>}
     </article>
   );
 }

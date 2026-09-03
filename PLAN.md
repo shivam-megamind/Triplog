@@ -1,80 +1,86 @@
-# Build plan
+# V1 build plan
 
-## Milestone 1 — Complete Build Week journey
+## Sources
 
-Status: in progress
+- Product scope: `docs/Triplog_V1_Scoping_Doc.md`
+- Ordered milestones: `docs/Triplog_V1_Build_Plan.md`
 
-Goal: one signed-in traveller can turn up to 500 photos from a completed trip into a saved, private first-draft travel book, add their own words, and share the whole finished journey through one revocable link.
+## Delivery rule
 
-The public landing page at `/` is complete and frozen. Product work stays under `/book` and `/share/[token]`.
+The independent review reopened affected milestones. Core Repair Phase 1 is the only currently approved repair slice; stop for user review after its validation. No later milestone or repair phase compensates for an earlier broken one.
 
-### Implementation sequence
+## Retained boundary
 
-- [ ] Expand the Convex schema and pure reconstruction rules for photo metadata, processing state, day groups, similar-photo moments, and revocable shares.
-- [ ] Replace blank Day 1 entry with focused onboarding, thumbnail review, controlled batch upload, and real processing steps.
-- [ ] Reveal a photo-led reconstructed timeline with uncertainty labels, grouped-photo expansion, corrections, and contextual traveller-authored prompts.
-- [ ] Build the private editorial book preview and signed-in, read-only whole-journey sharing with revoke support.
-- [ ] Validate small real uploads, missing metadata, grouped bursts, persistence, private access, revoked links, mobile/desktop layout, keyboard use, reduced motion, console, tests, lint, types, and production build.
+The landing page at `/`, the signup/sign-in interface, and the flow that returns a signed-out user to `/` stay unchanged unless the user approves a change first.
 
-### Acceptance criteria
+## Milestone tracker
 
-- The landing-page CTA opens the existing authenticated product without changing the landing page itself.
-- A new traveller sees “A trip is already waiting in your camera roll,” selects or drops supported photos, reviews thumbnails, removes mistakes, and sees an exact count before upload.
-- Up to 500 photos upload to Convex storage in controlled batches. Unsupported files are explained and never claimed as saved.
-- Triplog stores capture time, local date, GPS when present, orientation, dimensions, file type, file size, exact hash, and a lightweight visual hash when the browser can produce one.
-- Photos are ordered by local capture time, with selected order preserved for missing dates. Days and deterministic moments are reconstructed from real metadata.
-- Exact duplicates and short similar/burst sequences stay saved, appear as one expandable moment, and clearly say how many photos were grouped.
-- Missing GPS never produces an invented place. Nominatim receives at most one representative coordinate per day, results remain cached, and OpenStreetMap attribution remains visible.
-- The traveller can correct day details and save memories, recommendations, warnings, and unseen details in their own words.
-- The private preview has a cover, date range, day chapters, large representative photographs, confirmed places, and traveller-authored text.
-- Sharing creates a new hard-to-guess whole-journey link. A recipient must sign in, receives read-only data only, and loses access after the owner revokes the link.
-- Saved work survives a new browser session. Private and draft data are rejected in Convex rather than merely hidden in the interface.
+Only milestones with accepted evidence are checked. The independent review reopened milestones 3–29; code that already exists is retained and verified during its approved repair phase rather than assumed complete.
 
-### Four layers
+- [x] 1. Landing page with Create your journey and Sign in — retained, validated, and approved.
+- [ ] 2. Account creation, sign-in, sign-out, and return to landing — the stale-build asset blocker is repaired and the server-asset regression check passes; final live browser confirmation is reopened.
+- [ ] 3. Your Journeys and Shared with me, including empty states.
+- [ ] 4. Multiple free journey drafts with correct statuses.
+- [ ] 5. Destination/date entry, validation, duplicate-tap protection, and owner correction after creation. The Phase 1 edit-and-reconstruct path is implemented; browser proof remains.
+- [ ] 6. Photo selection with supported-format checks, clear HEIC/HEIF rejection, and full rejection above the internal 100-photo safety limit. Phase 1 automated checks pass; browser proof remains.
+- [ ] 7. Original upload with per-file and overall progress.
+- [ ] 8. Resume unfinished work and retry only failed photos.
+- [ ] 9. Preserved original plus thumbnail, display, and large copies.
+- [ ] 10. Visible date, time, GPS, and readable place evidence. Phase 1 implementation exists; real-photo browser proof remains.
+- [ ] 11. Automatic dates, multiple stops per date, chronological moments, and evidence-based stop sequence. Unit checks pass; real-photo browser proof remains.
+- [ ] 12. Duplicate/similar groups, representative suggestion, and View all.
+- [ ] 13. Possibly unrelated review and restore. Ready journeys with zero visible moments now open a safe review state, and corrected trip dates reclassify the same saved photo records; browser proof remains.
+- [ ] 14. Location unknown handling plus location and moment-placement correction. Phase 1 implementation exists; persistence needs browser proof.
+- [ ] 15. Low-quality-photo retention and representative override.
+- [ ] 16. Persistent processing status and one idempotent Resend journey-ready email. All reconstruction entry points now use the finish-or-error background path and expose retry; development delivery has evidence, while browser proof remains.
+- [ ] 17. Automatic draft with confirmed title and cover.
+- [ ] 18. Move moments between existing dates/stops and preserve originals when hidden. Phase 1 implementation exists; browser proof remains. Other reviewed controls are deferred.
+- [ ] 19. Optional questions and unphotographed memories with autosave.
+- [ ] 20. Practical mobile-first chronological travel timeline for owner and recipient. Phase 1 implementation exists; visual browser proof remains.
+- [ ] 21. Recipient preview and publish-readiness checks.
+- [ ] 22. Unlisted link with limited signed-out preview.
+- [ ] 23. Recipient authentication returning to the shared journey.
+- [ ] 24. Shared with me reopening and read-only enforcement.
+- [ ] 25. Owner edits visible in the existing shared journey.
+- [ ] 26. Stop sharing revokes link and recipient access.
+- [ ] 27. Recently Deleted, 30-day restore, and warned permanent deletion.
+- [ ] 28. Validate a prepared normal 10–100-photo journey and full rejection when a selection would exceed 100.
+- [ ] 29. Convex persistence and autosave; close-and-reopen and recent-edit safety remain under review.
 
-- Interface: onboarding uploader, selection tray, real processing state, reconstructed timeline, moment editor, private book, and signed-in shared reader.
-- Business logic: file validation, controlled batching, metadata extraction, deterministic duplicate/burst grouping, day reconstruction, share eligibility, and revoke rules.
-- Database: trip processing fields, rich photo metadata, day records, moment records, storage references, share links, and access records.
-- Integrations: Convex Auth, Convex database and file storage, cached OpenStreetMap Nominatim reverse geocoding, and later Vercel hosting. No image-AI service is added.
-
-### Validation commands
+## Validation required after every milestone
 
 - `npm run test`
 - `npm run lint`
 - `npm run typecheck`
-- `npx convex dev --once`
 - `npm run build`
-- `npm run dev`
+- Relevant mobile and desktop browser checks
+- Confirm the landing, authentication, and sign-out behavior remain unchanged
 
-### Recovery
+## Current architecture decisions
 
-- Selection happens before storage writes; removing a thumbnail changes only the local selection.
-- A failed batch keeps earlier confirmed uploads and identifies that processing did not complete.
-- Reconstruction never deletes stored originals. Rebuilding moments preserves matching traveller-authored text where possible.
-- Revoking a link invalidates it in Convex and never deletes the owner’s trip.
-- Existing Milestone 1 records use optional new fields and remain readable during the local migration.
-- Landing-page source and image hashes are checked before and after implementation.
-
-### Approvals and blockers
-
-- Approved: Next.js, React, TypeScript, ESLint, Convex, Convex Auth, `jose`, and the existing `exifr` metadata reader.
-- Approved: up to 500 photos, deterministic lightweight moment grouping, whole-journey sharing, signed-in recipients, and the supplied copy/design direction.
-- No new dependency, external image-AI service, public deployment, Vercel change, or GitHub push is authorised.
-
-## Later milestones
-
-User testing and evidence-led iteration remain later work. Granular privacy, collaboration, imports, maps, voice, generated writing, payments, printed/PDF books, notifications, and social or video exports are not part of this build.
+- Next.js and React provide the website.
+- Convex provides authentication, database records, and photo storage.
+- OpenStreetMap Nominatim converts one representative coordinate per group into a place name; photos are never sent to it.
+- V1 uses Convex for upload recovery. Completed photos stay saved; failed or unfinished photos are retried or reselected individually. No separate resumable-upload service will be added.
+- Convex background jobs reconstruct a journey after upload, so the browser does not need to remain open.
+- Resend sends the one journey-ready email from the Convex background job. Development defaults to Resend's safe delivered test address; production delivery requires explicit sender settings.
+- Existing recovery behavior remains; Phase 1 adds no complex deletion infrastructure solely for unusually large journeys.
+- No system-generated traveller memories, opinions, warnings, or recommendations.
+- No new dependencies without approval.
 
 ## Decision log
 
-- 2026-08-31: Use Next.js and Convex, deployable to Vercel (user decision).
-- 2026-08-31: Build the retrospective, completed-trip loop first (user decision).
-- 2026-08-31: Keep trips private until the owner explicitly publishes (product rule).
-- 2026-08-31: Use installed email-and-password auth for V1 because installed Convex Auth 0.0.95 has no passkey provider. No verification email or password reset in this slice; revisit before public launch.
-- 2026-08-31: Product name corrected from Keepsake to Triplog (user decision).
-- 2026-08-31: Reconstruction is required in Milestone 1: EXIF ordering and day grouping, with manual entry only for missing metadata (user correction).
-- 2026-08-31: Use OpenStreetMap Nominatim with one representative coordinate per day group, permanent coordinate caching, visible attribution, and no photo transfer (user decision).
-- 2026-08-31: Repair legacy photo records by reading saved files back in the signed-in browser, restoring EXIF metadata, and rebuilding days without a manual refresh.
-- 2026-08-31: Support multiple trips per account with editable names and an explicit trip switcher (user correction).
-- 2026-09-01: Add the approved four-part landing page at `/`, keep the working product at `/book`, and use only the CTA “Turn a trip into a book,” repeated twice (user decision).
-- 2026-09-01: Freeze the completed landing page and expand Milestone 1 into the complete post-trip reconstruction, moment, book, and signed-in whole-journey sharing flow (user decision).
+- 2026-08-31: Use Next.js and Convex, deployable to Vercel.
+- 2026-08-31: Keep trips private until the owner explicitly publishes.
+- 2026-08-31: Use installed email-and-password Convex Auth for the current authentication flow.
+- 2026-08-31: Use OpenStreetMap Nominatim with rounded-coordinate caching, visible attribution, and no photo transfer.
+- 2026-09-01: Freeze the completed landing page and retain the existing authentication and sign-out flow.
+- 2026-09-02: Replace the proof-of-concept scope with the approved 29-milestone V1 scope.
+- 2026-09-03: Keep uploads on Convex; preserve successful files and retry or reselect only failed or unfinished files.
+- 2026-09-03: Use Resend's HTTP API for the journey-ready email, with the API key held only in Convex and an idempotency key preventing duplicates.
+- 2026-09-03: Replace the coffee-table-book core direction with a practical chronological travel timeline.
+- 2026-09-03: Assume 10–100 selected photos, enforce an internal 100-photo safety limit with full-selection rejection, and reject HEIC/HEIF without adding a conversion dependency.
+- 2026-09-03: Limit Core Repair Phase 1 to reconstruction, necessary correction controls, original preservation, timeline UI, and share-flow compatibility.
+- 2026-09-03: A ready journey always opens its timeline and review queue, even when all saved photos need review and no visible moments exist. Upload management remains an explicit separate action.
+- 2026-09-03: Empty and older stop-less journey structures must render a clear review or rebuild state; the owner must never lose access to preserved photos because the visible timeline is empty.
+- 2026-09-03: Trip details remain owner-controlled after creation. An explicit save reclassifies and reconstructs existing photo records; cancel performs no write, and failed or stale processing exposes retry.

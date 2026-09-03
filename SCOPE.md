@@ -1,45 +1,45 @@
 # Product scope
 
-## The user and moment
+## Source of truth
 
-A traveler has returned from one completed trip and is looking at an unorganized camera roll. They want to recover one meaningful day and place while the details are still available, without writing a traditional journal from scratch.
+- `docs/Triplog_V1_Scoping_Doc.md` defines the approved V1 product boundary.
+- `docs/Triplog_V1_Build_Plan.md` defines the 29 ordered acceptance milestones.
+- If older proof-of-concept behavior conflicts with either document, the approved V1 documents win.
 
-## Job and desired outcome
+## Core action
 
-Turn a small set of personal photos and real memories into a private, saved, photography-led travel book that can be shared deliberately.
+A signed-in traveller uploads selected photos from one completed trip and receives a recognisable, chronological, editable travel timeline grouped by date, multiple place-based stops, and moments. After correcting and optionally enriching it, the traveller can explicitly publish an unlisted, account-gated link.
 
-Current workarounds are leaving photos in the camera roll, posting a small selection on Instagram, or manually assembling notes and albums. This product’s advantage is reconstruction with the traveler in control: built from their photos and told in their voice.
+## Retained application surfaces
 
-The first proof of value is that one traveler completes and later returns to a saved chapter, or deliberately publishes its read-only link.
+The existing landing page, signup/sign-in interface, and sign-out-to-landing flow are retained. They must not be redesigned or rebuilt without the user's approval.
 
-## Public landing page
+## V1 boundaries
 
-The public homepage gives a recently returned traveller a 40-second explanation of Triplog. It shows four moments only: the private-book promise, automatic reconstruction from existing photos, preservation of personal details, and a read-only guide shared with a friend. Its single action, repeated twice, opens the private product at `/book`. It does not add a second product workflow or expose saved trip data.
+- Mobile-first website that can be saved to a phone home screen; no native app.
+- Photos only; no video processing.
+- Unlimited free journeys during Build Week.
+- Normal journeys contain approximately 10–100 selected photos. A 100-photo internal safety limit rejects an over-limit selection in full.
+- JPEG, PNG, and WebP are supported. HEIC and HEIF are rejected clearly in V1; no conversion dependency is added.
+- Original photos remain unchanged. Optimised thumbnail, display, and large-view copies are separate.
+- Reconstruction may organise evidence and make clearly labelled suggestions, but it must never invent memories, opinions, warnings, recommendations, or an exact travelled path.
+- User-confirmed information always overrides a system suggestion.
+- A reliable date without usable GPS stays on that date under **Location unknown**. The product never invents a place or exact travelled route.
+- Owners can explicitly edit a journey's destination, start date, and end date from **Your journeys**. Saving corrected dates rechecks and reconstructs the already saved photos; cancelling changes nothing and no photo is uploaded again.
+- A Ready journey with no visible moments opens a safe review state. Possibly unrelated or unplaced photos remain stored and the owner can reach **Check these photos** to confirm them.
+- Core and shared screens use a practical mobile-first travel timeline, not a coffee-table-book, magazine, or PDF presentation.
+- Trips remain private until an explicit publish action.
+- Shared journeys are unlisted, require an account for full access, and are read-only for recipients.
+- Deletion uses a 30-day recovery period before permanent removal.
+- No dependency or external service is added without approval.
+- Convex background jobs may continue reconstruction after the upload page is closed.
+- Failed or stale reconstruction can be retried from the saved photos and must settle in either Ready or a visible error state.
+- Resend sends one journey-ready email from Convex. Development uses Resend testing mode; production requires a verified sender domain and production deployment environment settings.
 
-## Milestone 1 boundary
+## Upload recovery decision
 
-- One account with multiple completed trips, one selected for editing at a time.
-- Up to six image files.
-- Triplog reads EXIF capture dates and GPS locally, orders photos chronologically, and groups them by capture day.
-- For each day group, Triplog sends one representative GPS coordinate—and never the photo—to OpenStreetMap Nominatim to suggest a place name.
-- Every returned place is cached by rounded coordinate so the same place is not requested twice.
-- Manual date or place entry appears only when that metadata is missing; all suggestions remain editable.
-- One authentic memory per reconstructed day.
-- Editable trip names, a trip switcher, and a clear way to start another trip.
-- Saved travel books with optional read-only public links.
-- Email-and-password sign-in using the installed Convex Auth package. Email verification and password reset are not included in this local slice.
+V1 continues to use Convex storage. Successfully uploaded photos remain saved. Failed or unfinished photos can be retried or reselected without restarting successful uploads. V1 does not add a separate resumable-upload service and does not promise byte-by-byte continuation inside one interrupted file.
 
-## Four layers
+## Explicitly outside V1
 
-1. Interface: sign-in, trip setup, upload, correction fields, memory field, chapter preview, privacy control, public reading page.
-2. Business logic: require ownership, cap uploads at six, validate required fields, keep private by default, publish only completed chapters.
-3. Database: users, authentication records, trips, photo storage references, and share tokens persist in Convex.
-4. Third-party services: Convex provides authentication, database, and image file storage. OpenStreetMap Nominatim receives one coordinate per day group and returns a place name; photos are never sent to it. Vercel can host the Next.js app later.
-
-## External coordinate privacy
-
-GPS coordinates can reveal where a traveler was. Triplog sends only one representative latitude/longitude pair per reconstructed day to OpenStreetMap Nominatim. It never sends the photo, memory, account, trip title, or traveler identity. The returned place name is cached in Convex so the same rounded coordinate is never looked up twice. The interface shows OpenStreetMap attribution.
-
-## Not this week
-
-Active-trip tracking, social features, collaboration, booking, itinerary planning, payments, printed books, PDFs, cloud-photo imports, continuous GPS, notifications, generated travel writing, multiple themes, advanced layout editing, and native mobile apps.
+The complete parked list remains in `docs/Triplog_V1_Scoping_Doc.md`. In particular, V1 excludes native apps, video, cloud-photo imports, continuous location history, generated travel writing, planning, visa tools, social features, payments, public discovery, affiliate systems, physical books, PDFs, and social-media video generation.

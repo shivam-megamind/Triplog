@@ -19,10 +19,28 @@ export type ReconstructedMoment = {
   startTime?: number;
 };
 
+export type ReconstructedStop = {
+  key: string;
+  dateKey: string;
+  evidence: "gps" | "unknown";
+  suggestedLabel: string;
+  confidence: "high" | "low";
+  latitude?: number;
+  longitude?: number;
+  photoIds: string[];
+  moments: ReconstructedMoment[];
+};
+
+export type ReconstructedDay = {
+  dateKey: string;
+  stops: ReconstructedStop[];
+};
+
 const SHORT_BURST_MS = 12_000;
 const SIMILAR_BURST_MS = 90_000;
 const NEARBY_MOMENT_MS = 180_000;
 const NEARBY_METRES = 75;
+const SAME_STOP_METRES = 600;
 
 export function visualHashDistance(left?: string, right?: string): number | null {
   if (!left || !right || left.length !== right.length) return null;
@@ -111,6 +129,65 @@ export function groupPhotosIntoMoments(input: ReconstructionPhoto[]): Reconstruc
   }
 
   return moments;
+}
+
+function dayOrder(left: string, right: string) {
+  if (left === "undated") return 1;
+  if (right === "undated") return -1;
+  return left.localeCompare(right);
+}
+
+/**
+ * Builds an evidence-led travel timeline. GPS photos form chronological stop
+ * runs when consecutive coordinates stay within the same local area. Dated
+ * photos without GPS remain in their date under an explicit unknown stop.
+ */
+export function reconstructTravelTimeline(input: ReconstructionPhoto[]): ReconstructedDay[] {
+  const photosByDate = new Map<string, ReconstructionPhoto[]>();
+  for (const photo of [...input].sort(comparePhotos)) {
+    const dateKey = photo.dateKey || "undated";
+    const photos = photosByDate.get(dateKey);
+    if (photos) photos.push(photo);
+    else photosByDate.set(dateKey, [photo]);
+  }
+
+  return [...photosByDate.entries()]
+    .sort(([left], [right]) => dayOrder(left, right))
+    .map(([dateKey, photos]) => {
+      const stopRuns: Array<{ evidence: "gps" | "unknown"; photos: ReconstructionPhoto[] }> = [];
+      for (const photo of photos) {
+        const hasGps = photo.latitude !== undefined && photo.longitude !== undefined;
+        const evidence = hasGps ? "gps" as const : "unknown" as const;
+        const current = stopRuns.at(-1);
+        const previous = current?.photos.at(-1);
+        const joinsCurrent = current !== undefined
+          && current.evidence === evidence
+          && (evidence === "unknown" || (previous !== undefined && (distanceInMetres(previous, photo) ?? Number.POSITIVE_INFINITY) <= SAME_STOP_METRES));
+        if (joinsCurrent) current.photos.push(photo);
+        else stopRuns.push({ evidence, photos: [photo] });
+      }
+
+      return {
+        dateKey,
+        stops: stopRuns.map((run) => {
+          const first = run.photos[0];
+          const gpsPhotos = run.photos.filter((photo) => photo.latitude !== undefined && photo.longitude !== undefined);
+          const latitude = gpsPhotos.length ? gpsPhotos.reduce((total, photo) => total + photo.latitude!, 0) / gpsPhotos.length : undefined;
+          const longitude = gpsPhotos.length ? gpsPhotos.reduce((total, photo) => total + photo.longitude!, 0) / gpsPhotos.length : undefined;
+          return {
+            key: `${dateKey}:${run.evidence}:${first.id}`,
+            dateKey,
+            evidence: run.evidence,
+            suggestedLabel: run.evidence === "gps" ? "Finding place name…" : "Location unknown",
+            confidence: run.evidence === "gps" ? "high" as const : "low" as const,
+            latitude,
+            longitude,
+            photoIds: run.photos.map((photo) => photo.id),
+            moments: groupPhotosIntoMoments(run.photos),
+          };
+        }),
+      };
+    });
 }
 
 export function groupedPhotoCount(moments: ReconstructedMoment[]): number {

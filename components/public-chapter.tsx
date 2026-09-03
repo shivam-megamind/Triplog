@@ -1,10 +1,24 @@
 "use client";
 
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
+import Image from "next/image";
 import { useEffect } from "react";
 import { api } from "@/convex/_generated/api";
-import { Chapter } from "./chapter";
-import { SignedOutRedirect } from "./signed-out-redirect";
+import { JourneyTimeline } from "./journey-timeline";
+import { AuthForm } from "./auth-form";
+
+function previewDates(startDate?: number, endDate?: number) {
+  if (startDate === undefined || endDate === undefined) return "Trip dates";
+  const format = (value: number) => new Intl.DateTimeFormat("en", { day: "numeric", month: "short", year: "numeric" }).format(new Date(value));
+  return startDate === endDate ? format(startDate) : `${format(startDate)} – ${format(endDate)}`;
+}
+
+function SignedOutPreview({ token }: { token: string }) {
+  const preview = useQuery(api.trips.getSharePreview, { shareToken: token });
+  if (preview === undefined) return <main className="center-message">Opening the shared preview…</main>;
+  if (preview === null) return <main className="not-found"><p className="wordmark">Triplog</p><h1>This journey is private.</h1><p>The owner may have stopped sharing it.</p></main>;
+  return <main className="share-gate"><section className="limited-preview">{preview.coverUrl ? <Image src={preview.coverUrl} alt={`Cover for ${preview.title}`} fill priority sizes="100vw" /> : null}<div><p className="eyebrow">A journey shared by {preview.creatorName}</p><h1>{preview.title}</h1><p>{preview.destination} · {previewDates(preview.startDate, preview.endDate)}</p><span>Sign in to open the complete read-only journey.</span></div></section><AuthForm context="share" initialMode="signIn" /></main>;
+}
 
 function SharedReader({ token }: { token: string }) {
   const trip = useQuery(api.trips.getShared, { shareToken: token });
@@ -21,7 +35,7 @@ function SharedReader({ token }: { token: string }) {
   return (
     <main className="public-shell">
       <p className="public-brand">A journey preserved with <span>Triplog</span> · Read only</p>
-      <Chapter {...trip} />
+      <JourneyTimeline {...trip} readOnly />
       <p className="osm-attribution public-attribution">Place names © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a></p>
     </main>
   );
@@ -31,7 +45,7 @@ export function PublicChapter({ token }: { token: string }) {
   return (
     <>
       <AuthLoading><main className="center-message">Checking this private link…</main></AuthLoading>
-      <Unauthenticated><SignedOutRedirect returnTo={`/share/${token}`} /></Unauthenticated>
+      <Unauthenticated><SignedOutPreview token={token} /></Unauthenticated>
       <Authenticated><SharedReader token={token} /></Authenticated>
     </>
   );

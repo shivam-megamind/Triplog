@@ -332,6 +332,17 @@ textarea { resize: vertical; line-height: 1.55; }
 .unfinished-uploads li small { grid-column: 1 / -1; color: var(--ink-faint); }
 .upload-selection-grid li[data-status="failed"] { box-shadow: 0 0 0 2px #a74336; }
 .upload-selection-grid li > small { display: block; padding: 0 10px 10px; color: #853329; }
+.upload-activity { margin-top: 14px; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 16px; border: 1px solid rgba(37,70,60,.16); border-radius: 10px; background: rgba(37,70,60,.05); }
+.upload-activity strong { color: var(--forest); font-size: .88rem; font-variant-numeric: tabular-nums; }
+.upload-activity span { color: var(--ink-faint); font-size: .72rem; line-height: 1.45; text-align: right; }
+.upload-activity progress { grid-column: 1 / -1; width: 100%; height: 6px; margin-top: 8px; accent-color: var(--forest); }
+.rejected-files { margin-top: 14px; padding: 16px; border-left: 3px solid var(--terracotta); background: #fff4ee; }
+.rejected-files h2 { margin: 0; color: var(--error); font-size: .88rem; }
+.rejected-files ul { margin: 10px 0 0; padding: 0; display: grid; gap: 8px; list-style: none; }
+.rejected-files li { min-width: 0; display: grid; gap: 2px; }
+.rejected-files strong, .rejected-files span { overflow-wrap: anywhere; }
+.rejected-files strong { font-size: .72rem; }
+.rejected-files span { color: var(--ink-soft); font-size: .7rem; line-height: 1.45; }
 .selection-action > div { display: flex; gap: 10px; }
 .reveal-actions { display: flex; justify-content: flex-end; gap: 10px; }
 .confirmation-panel { margin: 58px 0 0; padding: clamp(24px, 5vw, 54px); display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, .8fr); gap: 36px; background: var(--paper-deep); }
@@ -970,6 +981,7 @@ textarea { resize: vertical; line-height: 1.55; }
 .review-photo-card { border-color: var(--travel-border); background: var(--travel-surface); }
 .retry-photo-button { min-height: 44px; width: calc(100% - 16px); margin: 0 8px 8px; border: 1px solid rgba(165,93,60,.28); border-radius: 8px; background: #fff4ee; color: #86462b; font-weight: 700; }
 .upload-selection-grid li > small { overflow-wrap: anywhere; }
+.upload-selection-grid .retry-photo-button { overflow-wrap: anywhere; }
 
 .travel-summary { width: min(1240px, 100%); max-width: none; margin: 0 auto; padding: 28px clamp(14px,3vw,40px) 84px; }
 .timeline-preview-screen .travel-summary { padding-inline: 0; }
@@ -1048,4 +1060,63 @@ textarea { resize: vertical; line-height: 1.55; }
   .preview-toolbar { margin-top: 6px; }
   .sharing-panel { padding: 17px; }
   .onboarding-header { position: sticky; top: 0; z-index: 30; min-height: 58px; padding: 8px 12px; background: rgba(246,245,240,.95); backdrop-filter: blur(18px); }
+}
+
+/* iPhone safe areas and narrow-screen containment. Insets are zero on desktop. */
+.core-product.journeys-home { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+.onboarding-shell.core-product { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
+.core-product .journeys-home-header,
+.core-product .onboarding-header {
+  min-height: calc(68px + env(safe-area-inset-top));
+  padding-top: calc(14px + env(safe-area-inset-top));
+  padding-right: calc(clamp(20px, 5vw, 72px) + env(safe-area-inset-right));
+  padding-bottom: 14px;
+  padding-left: calc(clamp(20px, 5vw, 72px) + env(safe-area-inset-left));
+}
+
+@media (max-width: 760px) {
+  .core-product .journeys-home-header,
+  .core-product .onboarding-header {
+    padding-right: calc(16px + env(safe-area-inset-right));
+    padding-left: calc(16px + env(safe-area-inset-left));
+  }
+  .core-product .journey-library-tabs {
+    padding-right: calc(12px + env(safe-area-inset-right));
+    padding-left: calc(12px + env(safe-area-inset-left));
+    overscroll-behavior-inline: contain;
+    scroll-padding-inline: 12px;
+    scrollbar-width: none;
+  }
+  .core-product .journey-library-tabs::-webkit-scrollbar { display: none; }
+  .core-product .journey-library-tabs button { flex: 0 0 auto; white-space: nowrap; }
+}
+
+@media (max-width: 430px) {
+  .core-product .journeys-home-header { gap: 10px; }
+  .core-product .journeys-home-header .wordmark,
+  .core-product .journeys-home-header .text-button { flex: 0 0 auto; }
+  .core-product .journeys-home-intro,
+  .core-product .onboarding-intro { padding-right: calc(14px + env(safe-area-inset-right)); padding-left: calc(14px + env(safe-area-inset-left)); }
+  .core-product .selection-workspace { max-width: calc(100% - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)); margin-right: calc(8px + env(safe-area-inset-right)); margin-left: calc(8px + env(safe-area-inset-left)); padding: 14px; }
+  .core-product .onboarding-header { align-items: center; gap: 4px 10px; }
+  .core-product .onboarding-header > p:not(.wordmark) { order: 3; flex: 1 0 100%; }
+  .core-product .onboarding-header .text-button { margin-left: auto; }
+  .photo-dropzone { min-height: 160px; padding: 28px 14px; }
+  .upload-activity { grid-template-columns: 1fr; padding: 13px 14px; }
+  .upload-activity span { text-align: left; }
+  .selection-grid { gap: 8px; }
+  .selection-grid li > div { padding-inline: 8px; }
+  .rejected-files { padding: 14px; }
+  .unfinished-uploads li { grid-template-columns: 1fr; }
+  .unfinished-uploads li small { grid-column: 1; }
+  .deleted-journey h2,
+  .journey-library-item h2 { overflow-wrap: anywhere; }
+}
+
+@media (max-width: 360px) {
+  .core-product .journeys-home-intro h1 { font-size: 1.9rem; }
+  .core-product .onboarding-intro h1 { font-size: 2rem; }
+  .core-product .journey-library-body { padding: 17px; }
+  .core-product .selection-workspace { padding: 12px; }
+  .upload-overview > div { padding: 14px 12px; }
 }

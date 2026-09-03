@@ -20,7 +20,7 @@ The existing landing page, signup/sign-in interface, and sign-out-to-landing flo
 - Photos only; no video processing.
 - Unlimited free journeys during Build Week.
 - Normal journeys contain approximately 10–100 selected photos. A 100-photo internal safety limit rejects an over-limit selection in full.
-- JPEG, PNG, and WebP are supported. HEIC and HEIF are rejected clearly in V1; no conversion dependency is added.
+- JPEG, PNG, and WebP are supported. HEIC and HEIF are also accepted when the current browser can decode them; otherwise that file fails visibly with JPEG/PNG/WebP export guidance. No conversion dependency is added.
 - Original photos remain unchanged. Optimised thumbnail, display, and large-view copies are separate.
 - Reconstruction may organise evidence and make clearly labelled suggestions, but it must never invent memories, opinions, warnings, recommendations, or an exact travelled path.
 - User-confirmed information always overrides a system suggestion.
@@ -35,6 +35,7 @@ The existing landing page, signup/sign-in interface, and sign-out-to-landing flo
 - Convex background jobs may continue reconstruction after the upload page is closed.
 - Failed or stale reconstruction can be retried from the saved photos and must settle in either Ready or a visible error state.
 - An existing journey can accept additional photos. The screen shows the saved count, accepts only new files, preserves existing originals, identifies a failed filename, and retries that item without restarting successful uploads.
+- Multi-photo intake confirms the returned selection before browser image work begins. Photo preparation is serialised and storage transfers use limited concurrency so a normal iPhone selection does not start every decode, canvas, or upload at once.
 - Journey title and cover, trip details, stop names, memories, useful details, recommendations, and warnings use an explicit read → edit → save or cancel interaction. A confirmed save returns to read state; a failed save keeps the draft available for Retry.
 - Authenticated owner and recipient screens share a warm, photo-led travel workspace with a compact journey header, an evidence-based stop overview, day navigation, and a responsive timeline. A stop sequence is labelled approximate and never presented as an exact travelled route.
 - Resend sends one journey-ready email from Convex. Development uses Resend testing mode; production requires a verified sender domain and production deployment environment settings.

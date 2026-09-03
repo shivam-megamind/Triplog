@@ -3,6 +3,46 @@ import test from "node:test";
 import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
 import { groupPhotosIntoMoments, groupedPhotoCount, reconstructTravelTimeline, visualHashDistance } from "./reconstruction.ts";
 import { shouldOfferLocationSuggestion, suggestJourneyTitle } from "./title-suggestion.ts";
+import { createTaskLimiter, photoFileError, photoFormat } from "./photo-upload.ts";
+
+const fileDetails = (name: string, type: string, size = 1024) => ({ name, type, size });
+
+test("photo intake accepts supported still-image formats, including iPhone HEIC", () => {
+  assert.equal(photoFormat(fileDetails("coast.jpeg", "image/jpeg")), "jpeg");
+  assert.equal(photoFormat(fileDetails("coast.png", "image/png")), "png");
+  assert.equal(photoFormat(fileDetails("coast.webp", "image/webp")), "webp");
+  assert.equal(photoFormat(fileDetails("IMG_1234.HEIC", "image/heic")), "heic");
+  assert.equal(photoFormat(fileDetails("IMG_1234.HEIF", "")), "heif");
+});
+
+test("photo intake rejects videos, misleading extensions, and oversized images clearly", () => {
+  assert.match(photoFileError(fileDetails("clip.mov", "video/quicktime")) ?? "", /video/i);
+  assert.match(photoFileError(fileDetails("clip.jpg", "video/mp4")) ?? "", /video/i);
+  assert.match(photoFileError(fileDetails("notes.jpg", "text/plain")) ?? "", /supported photo/i);
+  assert.match(photoFileError(fileDetails("large.jpg", "image/jpeg", (50 * 1024 * 1024) + 1)) ?? "", /50 MB/i);
+});
+
+test("the task limiter never starts more than its configured number of jobs", async () => {
+  const limit = createTaskLimiter(2);
+  let active = 0;
+  let peak = 0;
+  const releases: Array<() => void> = [];
+  const jobs = Array.from({ length: 5 }, () => limit(async () => {
+    active += 1;
+    peak = Math.max(peak, active);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    active -= 1;
+  }));
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(active, 2);
+  while (releases.length) {
+    releases.shift()?.();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  await Promise.all(jobs);
+  assert.equal(peak, 2);
+});
 
 test("a confirmed reconstructed journey can be published", () => {
   assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", titleConfirmed: true, coverConfirmed: true, recipientPreviewedAt: 3, photoCount: 2, days: [{ displayDate: "14 October 2025", place: "Gion, Kyoto" }], moments: [{ memory: "", recommendation: "", warning: "", detail: "" }] }), null);

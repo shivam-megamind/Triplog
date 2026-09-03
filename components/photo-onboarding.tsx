@@ -6,13 +6,15 @@ import { DragEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { createPhotoVariants, readPhotoMetadata } from "@/lib/photo-metadata";
+import { createTaskLimiter, photoFileError } from "@/lib/photo-upload";
 import { MAX_PHOTOS } from "@/lib/trip";
-
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const SUPPORTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 type LocalStatus = "ready" | "preparing" | "uploading" | "saved" | "failed";
 type SelectedPhoto = { key: string; file: File; preview: string; status: LocalStatus; error?: string };
+type RejectedPhoto = { id: string; name: string; error: string };
+type SelectionReceipt = { total: number; accepted?: number; rejected?: number; preparing: boolean };
+type BatchProgress = { total: number; finished: number; failures: number; stage: "preparing" | "uploading" };
+
 function fileKey(file: File) {
   return `${file.name}:${file.size}:${file.lastModified}`;
 }
@@ -24,6 +26,19 @@ async function storeBlob(uploadUrl: string, blob: Blob) {
   const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": blob.type || "application/octet-stream" }, body: blob });
   if (!response.ok) throw new Error("The connection stopped while saving this photo.");
   return (await response.json() as { storageId: Id<"_storage"> }).storageId;
+}
+
+async function waitForVisiblePaint() {
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function localStatusLabel(status: LocalStatus, index: number) {
+  if (status === "ready") return `Ready ${String(index + 1).padStart(2, "0")}`;
+  return status[0].toUpperCase() + status.slice(1);
 }
 
 export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, reconstructionNeeded = false, onComplete, onCancel, initialError = "" }: {
@@ -46,7 +61,10 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
   const [notice, setNotice] = useState("");
   const [error, setError] = useState(initialError);
   const [uploading, setUploading] = useState(false);
-  const [completed, setCompleted] = useState(existingPhotoCount);
+  const [selecting, setSelecting] = useState(false);
+  const [selectionReceipt, setSelectionReceipt] = useState<SelectionReceipt>();
+  const [rejected, setRejected] = useState<RejectedPhoto[]>([]);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress>();
   const previews = useRef<string[]>([]);
   const uploadLock = useRef(false);
 
@@ -61,35 +79,51 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
   function addFiles(files: File[]) {
     if (uploadItems === undefined) {
       setNotice("Triplog is still checking the photographs already saved. Try selecting them again in a moment.");
-      return;
+      return { accepted: 0, rejected: files.length };
     }
     setError("");
     const accepted: SelectedPhoto[] = [];
-    const rejected: string[] = [];
+    const rejectedFiles: RejectedPhoto[] = [];
     const currentKeys = new Set(selected.map((photo) => photo.key));
     const incomingNewKeys = new Set(files.map(fileKey).filter((key) => !persistedByKey.has(key) && !currentKeys.has(key)));
     const currentNewCount = selected.filter((photo) => !persistedByKey.has(photo.key)).length;
     if (Math.max(uploadItems?.length ?? 0, existingPhotoCount) + currentNewCount + incomingNewKeys.size > MAX_PHOTOS) {
-      setNotice(`This selection would take the journey above ${MAX_PHOTOS} photos. Nothing was added. Choose fewer photos and try again.`);
-      return;
+      const message = `This selection would take the journey above ${MAX_PHOTOS} photos. Nothing was added. Choose fewer photos and try again.`;
+      setNotice(message);
+      setRejected(files.map((file, index) => ({ id: `${fileKey(file)}:${index}`, name: file.name, error: message })));
+      return { accepted: 0, rejected: files.length };
     }
-    for (const file of files) {
+    for (const [index, file] of files.entries()) {
       const key = fileKey(file);
-      const looksLikeHeic = /\.(heic|heif)$/i.test(file.name) || /image\/(heic|heif)/i.test(file.type);
-      if (looksLikeHeic) { rejected.push(`${file.name} is a HEIC or HEIF photo. Triplog cannot prepare this format in V1. Export it as JPEG, PNG, or WebP and select it again.`); continue; }
-      if (!SUPPORTED_TYPES.has(file.type)) { rejected.push(`${file.name} is not a supported JPEG, PNG, or WebP photo. Videos are not supported in V1.`); continue; }
-      if (file.size > MAX_FILE_SIZE) { rejected.push(`${file.name} is larger than 50 MB.`); continue; }
-      if (persistedByKey.get(key)?.status === "uploaded" || uploadedSignatures.has(fileSignature(file))) { rejected.push(`${file.name} is already safely uploaded.`); continue; }
-      if (currentKeys.has(key) || accepted.some((photo) => photo.key === key)) continue;
+      const validationError = photoFileError(file);
+      const rejectionId = `${key}:${index}`;
+      if (validationError) { rejectedFiles.push({ id: rejectionId, name: file.name, error: validationError }); continue; }
+      if (persistedByKey.get(key)?.status === "uploaded" || uploadedSignatures.has(fileSignature(file))) { rejectedFiles.push({ id: rejectionId, name: file.name, error: `${file.name} is already safely uploaded.` }); continue; }
+      if (currentKeys.has(key)) { rejectedFiles.push({ id: rejectionId, name: file.name, error: `${file.name} is already selected on this device.` }); continue; }
+      if (accepted.some((photo) => photo.key === key)) { rejectedFiles.push({ id: rejectionId, name: file.name, error: `${file.name} was selected more than once.` }); continue; }
       const preview = URL.createObjectURL(file);
       previews.current.push(preview);
       accepted.push({ key, file, preview, status: "ready" });
     }
     if (accepted.length) setSelected((current) => [...current, ...accepted]);
-    setNotice(rejected.slice(0, 4).join(" "));
+    setRejected(rejectedFiles);
+    setNotice(rejectedFiles.length ? `${countLabel(rejectedFiles.length, "file")} need attention below. No file was silently skipped.` : "");
+    return { accepted: accepted.length, rejected: rejectedFiles.length };
   }
 
-  function drop(event: DragEvent<HTMLLabelElement>) { event.preventDefault(); addFiles(Array.from(event.dataTransfer.files)); }
+  async function receiveFiles(files: File[]) {
+    if (!files.length || selecting || uploading) return;
+    setSelecting(true);
+    setRejected([]);
+    setNotice("");
+    setSelectionReceipt({ total: files.length, preparing: true });
+    await waitForVisiblePaint();
+    const result = addFiles(files);
+    setSelectionReceipt({ total: files.length, ...result, preparing: false });
+    setSelecting(false);
+  }
+
+  function drop(event: DragEvent<HTMLLabelElement>) { event.preventDefault(); void receiveFiles(Array.from(event.dataTransfer.files)); }
   function remove(key: string) {
     setSelected((current) => {
       const removed = current.find((photo) => photo.key === key);
@@ -111,6 +145,7 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
     if (!candidates.length || uploading || uploadLock.current) return;
     uploadLock.current = true;
     setUploading(true);
+    setBatchProgress({ total: candidates.length, finished: 0, failures: 0, stage: "preparing" });
     setError("");
     setNotice("");
     const firstNewOrder = Math.max(uploadItems?.length ?? 0, existingPhotoCount);
@@ -133,32 +168,53 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
     let saved = uploadedCount;
     let failures = 0;
     let nextIndex = 0;
+    const preparePhoto = createTaskLimiter(1);
+    const uploadBlob = createTaskLimiter(2);
+
+    function finishPhoto(failed: boolean) {
+      setBatchProgress((current) => current ? {
+        ...current,
+        finished: current.finished + 1,
+        failures: current.failures + (failed ? 1 : 0),
+      } : current);
+    }
+
     async function worker() {
       while (nextIndex < candidates.length) {
         const index = nextIndex++;
         const photo = candidates[index];
         try {
-          updateLocal(photo.key, { status: "preparing", error: undefined });
           await markUploadAttempt({ tripId: existingTripId, uploadKey: photo.key });
-          const [metadata, variants] = await Promise.all([readPhotoMetadata(photo.file), createPhotoVariants(photo.file)]);
+          const { metadata, variants } = await preparePhoto(async () => {
+            updateLocal(photo.key, { status: "preparing", error: undefined });
+            await waitForVisiblePaint();
+            const metadata = await readPhotoMetadata(photo.file);
+            const variants = await createPhotoVariants(photo.file);
+            return { metadata, variants };
+          });
           updateLocal(photo.key, { status: "uploading" });
+          setBatchProgress((current) => current ? { ...current, stage: "uploading" } : current);
           const urls = await Promise.all(Array.from({ length: 4 }, () => generateUploadUrl({ tripId: existingTripId })));
           const [storageId, thumbnailStorageId, displayStorageId, largeStorageId] = await Promise.all([
-            storeBlob(urls[0], photo.file), storeBlob(urls[1], variants.thumbnail), storeBlob(urls[2], variants.display), storeBlob(urls[3], variants.large),
+            uploadBlob(() => storeBlob(urls[0], photo.file)),
+            uploadBlob(() => storeBlob(urls[1], variants.thumbnail)),
+            uploadBlob(() => storeBlob(urls[2], variants.display)),
+            uploadBlob(() => storeBlob(urls[3], variants.large)),
           ]);
           await addPhoto({ tripId: existingTripId, uploadKey: photo.key, storageId, thumbnailStorageId, displayStorageId, largeStorageId, fileName: photo.file.name, order: persistedByKey.get(photo.key)?.order ?? firstNewOrder + index, ...metadata });
           saved += 1;
-          setCompleted(saved);
           updateLocal(photo.key, { status: "saved" });
+          finishPhoto(false);
         } catch (caught) {
           failures += 1;
           const message = caught instanceof Error && caught.message ? caught.message : "This photo could not be saved.";
           updateLocal(photo.key, { status: "failed", error: message });
+          finishPhoto(true);
           await markUploadFailed({ tripId: existingTripId, uploadKey: photo.key, error: message }).catch(() => undefined);
         }
       }
     }
-    await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, () => worker()));
+    await Promise.all(Array.from({ length: Math.min(2, candidates.length) }, () => worker()));
     const newlySaved = saved - uploadedCount;
     const remainingOnDevice = selected.filter((photo) => photo.status !== "saved" && !candidates.some((candidate) => candidate.key === photo.key)).length;
     if (newlySaved > 0) {
@@ -199,11 +255,13 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
       </section>
       <section className="selection-workspace" aria-label="Choose trip photographs">
         <label className="photo-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
-          <input type="file" disabled={uploadItems === undefined} accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" multiple onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.currentTarget.value = ""; }} />
-          <span className="dropzone-title">{uploadItems === undefined ? "Checking saved photos…" : "Choose trip photos"}</span><span>or drag JPEG, PNG, and WebP images here</span>
+          <input type="file" disabled={uploadItems === undefined || selecting || uploading} accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple onChange={(event) => { const files = Array.from(event.target.files ?? []); event.currentTarget.value = ""; void receiveFiles(files); }} />
+          <span className="dropzone-title">{uploadItems === undefined ? "Checking saved photos…" : selecting ? "Preparing photo list…" : "Choose trip photos"}</span><span>or drag JPEG, PNG, WebP, HEIC, and HEIF images here — videos are excluded</span>
         </label>
+        {selectionReceipt ? <div className="upload-activity selection-receipt" role="status" aria-live="polite"><strong>{countLabel(selectionReceipt.total, "photo")} selected</strong><span>{selectionReceipt.preparing ? "Preparing your photo list…" : `${countLabel(selectionReceipt.accepted ?? 0, "photo")} ready · ${countLabel(selectionReceipt.rejected ?? 0, "file")} need attention`}</span></div> : null}
+        {batchProgress ? <div className="upload-activity batch-progress" role="status" aria-live="polite"><strong>{batchProgress.stage === "preparing" ? `Preparing ${countLabel(batchProgress.total, "photo")}` : `Uploading ${batchProgress.finished} of ${batchProgress.total}`}</strong><span>{batchProgress.failures ? `${countLabel(batchProgress.failures, "file")} failed and can be retried below.` : "Failed items will not stop the remaining photos."}</span><progress max={batchProgress.total} value={batchProgress.finished}>{batchProgress.finished} of {batchProgress.total}</progress></div> : null}
         <div className="upload-overview" aria-live="polite">
-          <div><strong>{uploadedCount}</strong><span>saved</span></div><div><strong>{unfinished.length}</strong><span>unfinished</span></div><div><strong>{failedCount}</strong><span>failed</span></div><div><strong>{selected.length}</strong><span>ready here</span></div>
+          <div><strong>{uploadedCount}</strong><span>saved</span></div><div><strong>{unfinished.length}</strong><span>unfinished</span></div><div><strong>{failedCount}</strong><span>failed</span></div><div><strong>{selected.length}</strong><span>on this device</span></div>
         </div>
         {(uploadItems?.length ?? 0) > 0 ? <progress className="real-progress" max={uploadItems!.length} value={uploadedCount}>{uploadedCount} of {uploadItems!.length}</progress> : null}
         {unfinished.length ? (
@@ -212,15 +270,16 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
             {unfinished.length > 12 ? <p>And {unfinished.length - 12} more unfinished photos.</p> : null}</section>
         ) : null}
         {notice ? <p className="form-error" role="alert">{notice}</p> : null}
+        {rejected.length ? <section className="rejected-files" aria-labelledby="rejected-files-title"><h2 id="rejected-files-title">Files that need attention</h2><ul>{rejected.map((item) => <li key={item.id}><strong>{item.name}</strong><span>{item.error}</span></li>)}</ul></section> : null}
         {selected.length ? (
           <ul className="selection-grid upload-selection-grid" aria-label="Photos selected on this device">
-            {selected.map((photo, index) => <li key={photo.key} data-status={photo.status}><Image src={photo.preview} alt={`Selected photo ${index + 1}: ${photo.file.name}`} width={220} height={165} unoptimized /><div><span>{photo.status === "ready" ? String(index + 1).padStart(2, "0") : photo.status}</span>{!uploading && photo.status !== "saved" ? <button type="button" onClick={() => remove(photo.key)} aria-label={`Remove ${photo.file.name}`}>Remove</button> : null}</div>{photo.error ? <small><strong>{photo.file.name}</strong>: {photo.error}</small> : null}{photo.status === "failed" ? <button className="retry-photo-button" type="button" disabled={uploading} onClick={() => void uploadSelected(photo.key)}>Retry {photo.file.name}</button> : null}</li>)}
+            {selected.map((photo, index) => <li key={photo.key} data-status={photo.status}><Image src={photo.preview} alt={`Selected photo ${index + 1}: ${photo.file.name}`} width={220} height={165} loading="lazy" decoding="async" unoptimized /><div><span>{localStatusLabel(photo.status, index)}</span>{!uploading && photo.status !== "saved" ? <button type="button" onClick={() => remove(photo.key)} aria-label={`Remove ${photo.file.name}`}>Remove</button> : null}</div>{photo.error ? <small><strong>{photo.file.name}</strong>: {photo.error}</small> : null}{photo.status === "failed" ? <button className="retry-photo-button" type="button" disabled={uploading} onClick={() => void uploadSelected(photo.key)}>Retry {photo.file.name}</button> : null}</li>)}
           </ul>
         ) : <div className="selection-empty">Your selected photographs will appear here before anything is uploaded.</div>}
         {error ? <p className="form-error" role="alert">{error}</p> : null}
-        <div className="selection-action"><p>{uploading ? `${completed} originals saved. Failed items will not stop the others.` : "Choose the photos that best tell this trip. Unsupported formats, videos, and files above 50 MB are rejected before upload."}</p><div>
+        <div className="selection-action"><p>{uploading && batchProgress ? (batchProgress.stage === "preparing" ? `Preparing ${countLabel(batchProgress.total, "photo")} without blocking the page.` : `Uploading ${batchProgress.finished} of ${batchProgress.total}.`) : "Choose the photos that best tell this trip. Unsupported formats, videos, and files above 50 MB are rejected before upload."}</p><div>
           {reconstructionNeeded && existingPhotoCount > 0 && !selected.length ? <button className="secondary-button" disabled={uploading} onClick={() => void resumeReconstruction()}>Continue reconstruction</button> : null}
-          <button className="primary-button" disabled={!selected.some((photo) => photo.status !== "saved") || uploading} onClick={() => void uploadSelected()}>{uploading ? "Uploading…" : selected.length ? `Upload ${selected.filter((photo) => photo.status !== "saved").length} selected photo${selected.filter((photo) => photo.status !== "saved").length === 1 ? "" : "s"}` : "Choose photos to continue"}</button>
+          <button className="primary-button" disabled={!selected.some((photo) => photo.status !== "saved") || uploading || selecting} onClick={() => void uploadSelected()}>{uploading ? (batchProgress?.stage === "preparing" ? "Preparing photos…" : `Uploading ${batchProgress?.finished ?? 0} of ${batchProgress?.total ?? 0}`) : selected.length ? `Upload ${selected.filter((photo) => photo.status !== "saved").length} selected photo${selected.filter((photo) => photo.status !== "saved").length === 1 ? "" : "s"}` : "Choose photos to continue"}</button>
         </div></div>
       </section>
     </main>

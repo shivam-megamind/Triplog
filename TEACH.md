@@ -130,4 +130,16 @@ The authenticated product now behaves like a journey browser first and an editor
 
 The browser regression creates a private test journey, uploads two real JPEG files, saves all four enrichment fields, refreshes and reopens, checks duplicate upload prevention and preview navigation, then records desktop, tablet, and mobile screenshots. It does not prove a forced network failure, a GPS-bearing upload, or the full two-account share flow.
 
+## Mobile photo intake and safe areas
+
+The earlier upload queue looked limited because it used three photo workers, but each worker decoded the same full-size image for metadata and viewing copies, created three canvases together, and started four storage transfers together. On a phone that multiplied memory, processor, and network work before the screen could keep up.
+
+The repaired flow paints the selected count as soon as the iOS picker returns. It then prepares one photo at a time, lets at most two photos move through the wider queue, and permits only two storage file bodies at once. Each card still reaches Saved or Failed independently, the batch reports `Uploading X of N`, and a failed filename keeps its own Retry button.
+
+JPEG, PNG, and WebP remain the dependable formats. Safari can natively decode HEIC and HEIF on supported iPhones, so those files now enter the same pipeline without a new conversion package. A browser that cannot decode one leaves that file visible with instructions to export it as JPEG, PNG, or WebP.
+
+The app now requests `viewport-fit=cover`, which lets CSS see an iPhone's notch and home-indicator spaces. The journey and upload headers add those safe-area measurements to their existing padding. Journey-library tabs keep their full labels and scroll inside their own row on narrow screens instead of shrinking into one another.
+
+The final automated run has 36 passing unit checks, plus passing lint, TypeScript, and production build checks. The production Chromium flow confirmed the journey library at 320, 360, 375, 390, 414, and 430 pixels, confirmed an 18-photo selection at 390 pixels, and rechecked the timeline at every mobile width plus 768 and 1440 pixels. A physical iPhone upload and a real HEIC/HEIF file still need device confirmation because desktop Chromium cannot reproduce iOS memory limits or Apple's safe-area values.
+
 To run that check locally, start `npm run dev -- -p 3001` in one terminal. In a second terminal run `npm run test:e2e`. The test uses the Playwright browser package already installed in this project and writes its screenshots under `.validation/core-stabilization`.

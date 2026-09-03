@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
 
@@ -27,6 +27,40 @@ async function loadVisiblePhotos(page) {
   await page.evaluate(() => window.scrollTo(0, 0));
 }
 
+async function checkJourneyLibraryWidths(page) {
+  for (const width of [320, 360, 375, 390, 414, 430]) {
+    await page.setViewportSize({ width, height: 844 });
+    await noHorizontalOverflow(page);
+    const tabsFitTheirLabels = await page.locator(".journey-library-tabs button").evaluateAll((buttons) => buttons.every((button) => button.scrollWidth <= button.clientWidth));
+    assert.equal(tabsFitTheirLabels, true, `Journey tab label clipped at ${width}px`);
+    const headerFits = await page.locator(".journeys-home-header").evaluate((header) => {
+      const box = header.getBoundingClientRect();
+      return box.left >= 0 && box.right <= document.documentElement.clientWidth;
+    });
+    assert.equal(headerFits, true, `Journey header escaped the viewport at ${width}px`);
+    await page.screenshot({ path: path.join(screenshotDirectory, `${width}-journey-library.png`), fullPage: true });
+  }
+}
+
+async function checkLargeSelectionFeedback(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const jpeg = await readFile(path.resolve("public/images/coast.jpg"));
+  const files = Array.from({ length: 18 }, (_, index) => ({
+    name: `iphone-selection-${String(index + 1).padStart(2, "0")}.jpg`,
+    mimeType: "image/jpeg",
+    buffer: jpeg,
+  }));
+  await page.locator('input[type="file"]').setInputFiles(files);
+  await visible(page.getByText("18 photos selected", { exact: true }));
+  await visible(page.getByText("18 photos ready · 0 files need attention", { exact: true }));
+  assert.equal(await page.locator(".upload-selection-grid li").count(), 18);
+  await noHorizontalOverflow(page);
+  await page.screenshot({ path: path.join(screenshotDirectory, "390-18-selected.png"), fullPage: true });
+  const removeButtons = page.locator('.upload-selection-grid button[aria-label^="Remove"]');
+  while (await removeButtons.count()) await removeButtons.first().click();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+}
+
 async function createAccountAndJourney(page) {
   const email = `core-pass-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
   await page.goto(baseUrl);
@@ -39,12 +73,15 @@ async function createAccountAndJourney(page) {
   await page.waitForURL(/\/book/);
   await visible(page.getByRole("heading", { name: "Your journeys" }));
   assert.equal(await page.getByText("No personal notes added.").count(), 0);
+  await checkJourneyLibraryWidths(page);
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole("button", { name: "Create journey" }).click();
   await page.getByLabel("Destination or trip region").fill("Core pass coast");
   await page.getByLabel("Approximate start date").fill("2026-09-01");
   await page.getByLabel("Approximate end date").fill("2026-09-03");
   await page.getByRole("button", { name: "Continue to photos" }).click();
   await visible(page.getByText("Choose trip photos", { exact: true }));
+  await checkLargeSelectionFeedback(page);
   await page.locator('input[type="file"]').setInputFiles(path.resolve("public/images/coast.jpg"));
   await page.getByRole("button", { name: "Upload 1 selected photo" }).click();
   await visible(page.getByText("Unplaced photos"), 90_000);
@@ -120,7 +157,12 @@ async function run() {
     for (const [name, width, height] of [
       ["desktop", 1440, 1000],
       ["tablet", 768, 1024],
-      ["mobile", 390, 844],
+      ["mobile-320", 320, 844],
+      ["mobile-360", 360, 844],
+      ["mobile-375", 375, 844],
+      ["mobile-390", 390, 844],
+      ["mobile-414", 414, 896],
+      ["mobile-430", 430, 932],
     ]) {
       await page.setViewportSize({ width, height });
       await noHorizontalOverflow(page);
@@ -137,7 +179,7 @@ async function run() {
       await page.screenshot({ path: path.join(screenshotDirectory, `${name}.png`), fullPage: true });
     }
 
-    console.log("Core browser checks passed at 1440px, 768px, and 390px.");
+    console.log("Core browser checks passed at 320px, 360px, 375px, 390px, 414px, 430px, 768px, and 1440px.");
   } finally {
     await context.close();
     await browser.close();

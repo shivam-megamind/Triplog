@@ -1,5 +1,6 @@
 import { parse } from "exifr";
 import { localDateKey } from "./trip";
+import { photoFormat } from "./photo-upload";
 
 export type PhotoMetadata = {
   capturedAt?: number;
@@ -128,13 +129,20 @@ async function resizedBlob(bitmap: ImageBitmap, maxWidth: number, quality: numbe
 
 export async function createPhotoVariants(file: File): Promise<PhotoVariants> {
   if (typeof createImageBitmap !== "function") throw new Error("This browser cannot prepare fast photo copies.");
-  const bitmap = await createImageBitmap(file);
+  let bitmap: ImageBitmap;
   try {
-    const [thumbnail, display, large] = await Promise.all([
-      resizedBlob(bitmap, 360, 0.76),
-      resizedBlob(bitmap, 1280, 0.82),
-      resizedBlob(bitmap, 2048, 0.88),
-    ]);
+    bitmap = await createImageBitmap(file);
+  } catch {
+    const format = photoFormat(file);
+    if (format === "heic" || format === "heif") {
+      throw new Error(`${file.name} cannot be prepared by this browser. Export it as JPEG, PNG, or WebP and select it again.`);
+    }
+    throw new Error(`${file.name} could not be read as a photo.`);
+  }
+  try {
+    const thumbnail = await resizedBlob(bitmap, 360, 0.76);
+    const display = await resizedBlob(bitmap, 1280, 0.82);
+    const large = await resizedBlob(bitmap, 2048, 0.88);
     return { thumbnail, display, large };
   } finally {
     bitmap.close();

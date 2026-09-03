@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, initialPhotoReviewState, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, localDateKey, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
+import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
 import { groupPhotosIntoMoments, groupedPhotoCount, reconstructTravelTimeline, visualHashDistance } from "./reconstruction.ts";
 import { shouldOfferLocationSuggestion, suggestJourneyTitle } from "./title-suggestion.ts";
 
@@ -122,6 +122,24 @@ test("stale shaping and failed processing states offer recovery", () => {
   assert.equal(canRetryProcessing("error"), true);
   assert.equal(canRetryProcessing("ready"), false);
   assert.equal(journeyEntryView({ photoCount: 6, processingStatus: "error", managingPhotos: false }), "error");
+});
+
+test("only a recently updated reconstruction blocks another photo upload", () => {
+  const now = 1_000_000_000;
+  assert.equal(isProcessingLeaseActive("shaping", now - 60_000, now), true);
+  assert.equal(isProcessingLeaseActive("shaping", now - (16 * 60_000), now), false);
+  assert.equal(isProcessingLeaseActive("ready", now, now), false);
+});
+
+test("enrichment text is rejected clearly instead of silently shortened", () => {
+  const fields = { memory: "kept exactly", detail: "", recommendation: "", warning: "" };
+  assert.equal(enrichmentError(fields), null);
+  assert.equal(enrichmentError({ ...fields, memory: "x".repeat(MAX_ENRICHMENT_LENGTH + 1) }), "Memory must be 20,000 characters or fewer.");
+});
+
+test("manual-memory request identifiers produce a stable duplicate-prevention key", () => {
+  assert.equal(manualMomentKey(" request-123 "), "manual:request-123");
+  assert.equal(manualMomentKey("request-123"), manualMomentKey(" request-123 "));
 });
 
 test("exact duplicates stay stored inside one moment", () => {

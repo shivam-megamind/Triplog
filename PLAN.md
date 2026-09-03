@@ -24,7 +24,7 @@ Only milestones with accepted evidence are checked. The independent review reope
 - [ ] 5. Destination/date entry, validation, duplicate-tap protection, and owner correction after creation. The Phase 1 edit-and-reconstruct path is implemented; browser proof remains.
 - [ ] 6. Photo selection with supported-format checks, clear HEIC/HEIF rejection, and full rejection above the internal 100-photo safety limit. Phase 1 automated checks pass; browser proof remains.
 - [ ] 7. Original upload with per-file and overall progress.
-- [ ] 8. Resume unfinished work and retry only failed photos.
+- [ ] 8. Resume unfinished work and retry only failed photos. The stabilization browser run proves that adding one new file preserves the first file, returns to the updated timeline, and rejects reselection of the saved file; a forced network-failure browser run remains open.
 - [ ] 9. Preserved original plus thumbnail, display, and large copies.
 - [ ] 10. Visible date, time, GPS, and readable place evidence. Phase 1 implementation exists; real-photo browser proof remains.
 - [ ] 11. Automatic dates, multiple stops per date, chronological moments, and evidence-based stop sequence. Unit checks pass; real-photo browser proof remains.
@@ -35,9 +35,9 @@ Only milestones with accepted evidence are checked. The independent review reope
 - [ ] 16. Persistent processing status and one idempotent Resend journey-ready email. All reconstruction entry points now use the finish-or-error background path and expose retry; development delivery has evidence, while browser proof remains.
 - [ ] 17. Automatic draft with confirmed title and cover.
 - [ ] 18. Move moments between existing dates/stops and preserve originals when hidden. Phase 1 implementation exists; browser proof remains. Other reviewed controls are deferred.
-- [ ] 19. Optional questions and unphotographed memories with autosave.
-- [ ] 20. Practical mobile-first chronological travel timeline for owner and recipient. Phase 1 implementation exists; visual browser proof remains.
-- [ ] 21. Recipient preview and publish-readiness checks.
+- [ ] 19. Optional memories, useful details, recommendations, warnings, and unphotographed memories with explicit Save and Cancel. The core browser run proves four-field save, double-click protection, clean read state, and refresh/reopen persistence; forced server-failure recovery remains a manual check.
+- [ ] 20. Practical mobile-first chronological travel timeline for owner and recipient. The redesigned owner workspace passed real Chromium layout checks and screenshots at 390px, 768px, and 1440px with no horizontal overflow and readable photos.
+- [ ] 21. Recipient preview and publish-readiness checks. Timeline → preview → timeline passed in Chromium; the complete two-account publishing flow remains outside this milestone.
 - [ ] 22. Unlisted link with limited signed-out preview.
 - [ ] 23. Recipient authentication returning to the shared journey.
 - [ ] 24. Shared with me reopening and read-only enforcement.
@@ -45,7 +45,7 @@ Only milestones with accepted evidence are checked. The independent review reope
 - [ ] 26. Stop sharing revokes link and recipient access.
 - [ ] 27. Recently Deleted, 30-day restore, and warned permanent deletion.
 - [ ] 28. Validate a prepared normal 10–100-photo journey and full rejection when a selection would exceed 100.
-- [ ] 29. Convex persistence and autosave; close-and-reopen and recent-edit safety remain under review.
+- [ ] 29. Convex persistence and explicit confirmed saves. Memory, useful detail, recommendation, and warning survived refresh and reopening in Chromium; the broader two-session persistence audit remains open.
 
 ## Validation required after every milestone
 
@@ -84,3 +84,6 @@ Only milestones with accepted evidence are checked. The independent review reope
 - 2026-09-03: A ready journey always opens its timeline and review queue, even when all saved photos need review and no visible moments exist. Upload management remains an explicit separate action.
 - 2026-09-03: Empty and older stop-less journey structures must render a clear review or rebuild state; the owner must never lose access to preserved photos because the visible timeline is empty.
 - 2026-09-03: Trip details remain owner-controlled after creation. An explicit save reclassifies and reconstructs existing photo records; cancel performs no write, and failed or stale processing exposes retry.
+- 2026-09-03: Replace delayed enrichment autosave with one consistent explicit Save/Cancel model so navigation cannot discard a queued local timer and success appears only after Convex confirms the write.
+- 2026-09-03: Treat another journey's processing state as active for 15 minutes. Older processing records become recoverable errors instead of permanently blocking additional uploads.
+- 2026-09-03: Use the existing Playwright browser package for the core regression run; add no dependency or map service. Render GPS-backed stops in a lightweight in-product geographic overview and show a refined dated-timeline fallback when GPS is absent.

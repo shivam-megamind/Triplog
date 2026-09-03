@@ -22,6 +22,7 @@ export function TripEditor() {
   const [selectedId, setSelectedId] = useState<Id<"trips"> | null>(null);
   const [startingNew, setStartingNew] = useState(false);
   const [managingPhotos, setManagingPhotos] = useState(false);
+  const [previewTripId, setPreviewTripId] = useState<Id<"trips"> | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState("");
   const openedEmailLink = useRef(false);
@@ -71,7 +72,6 @@ export function TripEditor() {
         sharedTrips={sharedTrips}
         deletedTrips={deletedTrips}
         onContinue={setSelectedId}
-        onDetailsSaved={setSelectedId}
         onOpenShared={(shareToken) => router.push(`/share/${shareToken}`)}
         onCreate={() => setStartingNew(true)}
         onSignOut={() => void leaveTriplog()}
@@ -148,9 +148,11 @@ export function TripEditor() {
       key={trip._id}
       trip={trip}
       onNew={() => setStartingNew(true)}
-      onHome={() => setSelectedId(null)}
+      onHome={() => { setPreviewTripId(null); setSelectedId(null); }}
       onManagePhotos={() => setManagingPhotos(true)}
       onSignOut={() => void leaveTriplog()}
+      recipientPreview={previewTripId === trip._id}
+      onRecipientPreviewChange={(open) => setPreviewTripId(open ? trip._id : null)}
     />
   );
 }

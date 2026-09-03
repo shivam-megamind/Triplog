@@ -4,7 +4,7 @@ import { useMutation } from "convex/react";
 import { FormEvent, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { journeyDetailsErrors, type JourneyDetailsErrors } from "@/lib/trip";
+import { journeyDetailsErrors, MAX_DESTINATION_LENGTH, type JourneyDetailsErrors } from "@/lib/trip";
 
 function dateValue(value: string) {
   if (!value) return undefined;
@@ -61,8 +61,8 @@ export function JourneySetup({ onCreated, onCancel }: { onCreated: (tripId: Id<"
         <form className="journey-setup-form" onSubmit={submit} noValidate>
           <label>
             Destination or trip region
-            <input value={destination} onChange={(event) => { setDestination(event.target.value); setErrors((current) => ({ ...current, destination: undefined })); }} aria-invalid={Boolean(errors.destination)} aria-describedby={errors.destination ? "destination-error" : undefined} autoComplete="off" />
-            {errors.destination ? <span className="field-error" id="destination-error">{errors.destination}</span> : <span>A city, region, country, or a multi-country trip.</span>}
+            <input value={destination} maxLength={MAX_DESTINATION_LENGTH} onChange={(event) => { setDestination(event.target.value); setErrors((current) => ({ ...current, destination: undefined })); }} aria-invalid={Boolean(errors.destination)} aria-describedby={errors.destination ? "destination-error" : undefined} autoComplete="off" />
+            {errors.destination ? <span className="field-error" id="destination-error">{errors.destination}</span> : <span>A city, region, country, or a multi-country trip · {destination.length} / {MAX_DESTINATION_LENGTH}</span>}
           </label>
           <div className="journey-date-fields">
             <label>

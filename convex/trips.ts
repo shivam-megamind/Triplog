@@ -1,6 +1,17 @@
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { ConvexError, v } from "convex/values";
-import { initialPhotoReviewState, journeyDetailsErrors, MAX_PHOTOS, tripDetailsReprocessingPlan } from "../lib/trip";
+import {
+  enrichmentError,
+  initialPhotoReviewState,
+  isProcessingLeaseActive,
+  journeyDetailsErrors,
+  manualMomentKey,
+  MAX_ENRICHMENT_LENGTH,
+  MAX_LOCATION_LENGTH,
+  MAX_PHOTOS,
+  MAX_TITLE_LENGTH,
+  tripDetailsReprocessingPlan,
+} from "../lib/trip";
 import { groupedPhotoCount, reconstructTravelTimeline } from "../lib/reconstruction";
 import { suggestJourneyTitle } from "../lib/title-suggestion";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
@@ -239,7 +250,7 @@ export const create = mutation({
     if (!creationRequestId) throw new ConvexError("The journey request is missing.");
     const existing = await ctx.db.query("trips").withIndex("by_owner_request", (q) => q.eq("ownerId", userId).eq("creationRequestId", creationRequestId)).unique();
     if (existing !== null) return existing._id;
-    const cleanDestination = details.destination.trim().slice(0, 160);
+    const cleanDestination = details.destination.trim();
     return await ctx.db.insert("trips", {
       ownerId: userId,
       creationRequestId,
@@ -264,6 +275,7 @@ export const updateTitle = mutation({
     await requireOwnedTrip(ctx, tripId);
     const cleanTitle = title.trim();
     if (!cleanTitle) throw new ConvexError("Give this trip a name.");
+    if (cleanTitle.length > MAX_TITLE_LENGTH) throw new ConvexError(`Keep the journey title under ${MAX_TITLE_LENGTH} characters.`);
     await ctx.db.patch(tripId, { title: cleanTitle, titleSource: "user", updatedAt: Date.now() });
   },
 });
@@ -277,7 +289,7 @@ export const updateDetails = mutation({
   },
   handler: async (ctx, { tripId, destination, startDate, endDate }) => {
     const trip = await requireOwnedTrip(ctx, tripId);
-    const cleanDestination = destination.trim().slice(0, 160);
+    const cleanDestination = destination.trim();
     const errors = journeyDetailsErrors({ destination: cleanDestination, startDate, endDate });
     if (Object.keys(errors).length) throw new ConvexError({ message: "Check the journey details.", fieldErrors: errors });
 
@@ -419,18 +431,25 @@ export const beginUpload = mutation({
   handler: async (ctx, { tripId, items }) => {
     const trip = await requireOwnedTrip(ctx, tripId);
     const ownerTrips = await ctx.db.query("trips").withIndex("by_owner", (q) => q.eq("ownerId", trip.ownerId)).collect();
-    const activeOther = ownerTrips.find((item) => item._id !== tripId && ["reading", "queued", "ordering", "grouping", "shaping"].includes(item.processingStatus ?? ""));
-    if (activeOther) throw new ConvexError("Finish or retry the other active journey before starting this upload.");
+    const now = Date.now();
+    const processingOthers = ownerTrips.filter((item) => item._id !== tripId && ["reading", "queued", "ordering", "grouping", "shaping"].includes(item.processingStatus ?? ""));
+    const activeOther = processingOthers.find((item) => isProcessingLeaseActive(item.processingStatus, item.updatedAt, now));
+    if (activeOther) throw new ConvexError(`“${activeOther.title}” is still reconstructing. Wait for it to finish, then retry this upload.`);
+    for (const staleTrip of processingOthers) {
+      await ctx.db.patch(staleTrip._id, { processingStatus: "error", updatedAt: now });
+    }
     const current = await ctx.db.query("uploadItems").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect();
     const storedPhotos = await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect();
     const byKey = new Map(current.map((item) => [item.uploadKey, item]));
     const uniqueNew = items.filter((item, index) => items.findIndex((candidate) => candidate.uploadKey === item.uploadKey) === index && !byKey.has(item.uploadKey));
+    const uploadedSignatures = new Set(current.filter((item) => item.status === "uploaded").map((item) => `${item.fileName}:${item.fileSize}`));
+    const duplicate = uniqueNew.find((item) => uploadedSignatures.has(`${item.fileName}:${item.fileSize}`));
+    if (duplicate) throw new ConvexError(`${duplicate.fileName} is already uploaded to this journey.`);
     if (Math.max(current.length, storedPhotos.length) + uniqueNew.length > MAX_PHOTOS) throw new ConvexError(`A journey can hold up to ${MAX_PHOTOS} photos.`);
     const invalid = uniqueNew.find((item) => !SUPPORTED_PHOTO_TYPES.has(item.fileType));
     if (invalid) throw new ConvexError(`${invalid.fileName} is not a supported JPEG, PNG, or WebP photo. HEIC and HEIF are not supported in V1.`);
     const oversized = uniqueNew.find((item) => item.fileSize > MAX_FILE_SIZE);
     if (oversized) throw new ConvexError(`${oversized.fileName} is larger than 50 MB.`);
-    const now = Date.now();
     for (const item of uniqueNew) {
       await ctx.db.insert("uploadItems", {
         tripId,
@@ -970,6 +989,7 @@ export const saveStop = mutation({
     await requireOwnedTrip(ctx, stop.tripId);
     const cleanLabel = label.trim();
     if (!cleanLabel) throw new ConvexError("Add a location name, or keep Location unknown.");
+    if (cleanLabel.length > MAX_LOCATION_LENGTH) throw new ConvexError(`Keep the location name under ${MAX_LOCATION_LENGTH} characters.`);
     await ctx.db.patch(stopId, { label: cleanLabel, placeSource: "manual", confidence: "high" });
     await ctx.db.patch(stop.tripId, { updatedAt: Date.now(), completionLevel: "usable" });
   },
@@ -987,11 +1007,13 @@ export const saveMoment = mutation({
     const moment = await ctx.db.get(args.momentId);
     if (moment === null) throw new ConvexError("Moment not found.");
     await requireOwnedTrip(ctx, moment.tripId);
+    const error = enrichmentError(args);
+    if (error) throw new ConvexError(error);
     await ctx.db.patch(moment._id, {
-      memory: args.memory.trim().slice(0, 2_000),
-      recommendation: args.recommendation.trim().slice(0, 2_000),
-      warning: args.warning.trim().slice(0, 2_000),
-      detail: args.detail.trim().slice(0, 2_000),
+      memory: args.memory,
+      recommendation: args.recommendation,
+      warning: args.warning,
+      detail: args.detail,
       promptSkipped: false,
     });
     const enriched = [args.memory, args.recommendation, args.warning, args.detail].some((value) => value.trim());
@@ -1068,9 +1090,15 @@ export const moveMoment = mutation({
 });
 
 export const addMoment = mutation({
-  args: { tripId: v.id("trips"), dayId: v.id("days"), stopId: v.optional(v.id("stops")), memory: v.string() },
-  handler: async (ctx, { tripId, dayId, stopId, memory }) => {
+  args: { tripId: v.id("trips"), dayId: v.id("days"), stopId: v.optional(v.id("stops")), memory: v.string(), requestId: v.string() },
+  handler: async (ctx, { tripId, dayId, stopId, memory, requestId }) => {
     await requireOwnedTrip(ctx, tripId);
+    const cleanRequestId = requestId.trim();
+    if (!cleanRequestId || cleanRequestId.length > 100) throw new ConvexError("This memory request is missing. Try again.");
+    if (memory.length > MAX_ENRICHMENT_LENGTH) throw new ConvexError(`Memory must be ${MAX_ENRICHMENT_LENGTH.toLocaleString("en")} characters or fewer.`);
+    const key = manualMomentKey(cleanRequestId);
+    const duplicate = await ctx.db.query("moments").withIndex("by_trip_key", (q) => q.eq("tripId", tripId).eq("key", key)).unique();
+    if (duplicate) return duplicate._id;
     const day = await ctx.db.get(dayId);
     if (!day || day.tripId !== tripId) throw new ConvexError("Day not found.");
     const requestedStop = stopId ? await ctx.db.get(stopId) : null;
@@ -1082,14 +1110,14 @@ export const addMoment = mutation({
       tripId,
       dayId,
       stopId: firstStop?._id,
-      key: `manual:${crypto.randomUUID()}`,
+      key,
       dateKey: day.dateKey,
       sortOrder: moments.length,
       photoIds: [],
       representativeSource: "user",
       placementSource: "user",
       manuallyAdded: true,
-      memory: memory.trim().slice(0, 2_000),
+      memory,
       recommendation: "",
       warning: "",
       detail: "",
@@ -1131,7 +1159,8 @@ export const confirmTitleAndCover = mutation({
     if (!photo || photo.tripId !== tripId || (photo.reviewState ?? "included") !== "included") throw new ConvexError("Choose an included photo for the cover.");
     const cleanTitle = title.trim();
     if (!cleanTitle) throw new ConvexError("Give this journey a title.");
-    await ctx.db.patch(tripId, { title: cleanTitle.slice(0, 160), titleSource: "user", titleConfirmed: true, coverPhotoId, coverConfirmed: true, completionLevel: "usable", updatedAt: Date.now() });
+    if (cleanTitle.length > MAX_TITLE_LENGTH) throw new ConvexError(`Keep the journey title under ${MAX_TITLE_LENGTH} characters.`);
+    await ctx.db.patch(tripId, { title: cleanTitle, titleSource: "user", titleConfirmed: true, coverPhotoId, coverConfirmed: true, completionLevel: "usable", updatedAt: Date.now() });
   },
 });
 

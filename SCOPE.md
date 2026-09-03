@@ -34,6 +34,9 @@ The existing landing page, signup/sign-in interface, and sign-out-to-landing flo
 - No dependency or external service is added without approval.
 - Convex background jobs may continue reconstruction after the upload page is closed.
 - Failed or stale reconstruction can be retried from the saved photos and must settle in either Ready or a visible error state.
+- An existing journey can accept additional photos. The screen shows the saved count, accepts only new files, preserves existing originals, identifies a failed filename, and retries that item without restarting successful uploads.
+- Journey title and cover, trip details, stop names, memories, useful details, recommendations, and warnings use an explicit read → edit → save or cancel interaction. A confirmed save returns to read state; a failed save keeps the draft available for Retry.
+- Authenticated owner and recipient screens share a warm, photo-led travel workspace with a compact journey header, an evidence-based stop overview, day navigation, and a responsive timeline. A stop sequence is labelled approximate and never presented as an exact travelled route.
 - Resend sends one journey-ready email from Convex. Development uses Resend testing mode; production requires a verified sender domain and production deployment environment settings.
 
 ## Upload recovery decision

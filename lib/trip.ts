@@ -1,4 +1,9 @@
 export const MAX_PHOTOS = 100;
+export const MAX_DESTINATION_LENGTH = 160;
+export const MAX_TITLE_LENGTH = 160;
+export const MAX_LOCATION_LENGTH = 160;
+export const MAX_ENRICHMENT_LENGTH = 20_000;
+export const PROCESSING_LEASE_MS = 15 * 60 * 1000;
 
 export type JourneyDetails = {
   destination: string;
@@ -16,6 +21,7 @@ export type JourneyDetailsInput = {
 export function journeyDetailsErrors(details: JourneyDetails): JourneyDetailsErrors {
   const errors: JourneyDetailsErrors = {};
   if (!details.destination.trim()) errors.destination = "Add the destination or trip region.";
+  else if (details.destination.trim().length > MAX_DESTINATION_LENGTH) errors.destination = `Keep the destination under ${MAX_DESTINATION_LENGTH} characters.`;
   if (details.startDate === undefined || !Number.isFinite(details.startDate)) errors.startDate = "Add the approximate start date.";
   if (details.endDate === undefined || !Number.isFinite(details.endDate)) errors.endDate = "Add the approximate end date.";
   if (details.startDate !== undefined && details.endDate !== undefined && details.endDate < details.startDate) {
@@ -164,6 +170,38 @@ export function tripDetailsReprocessingPlan(
 export function canRetryProcessing(processingStatus?: JourneyProcessingState): boolean {
   return processingStatus === "error"
     || ["queued", "reading", "ordering", "grouping", "shaping"].includes(processingStatus ?? "");
+}
+
+export function isProcessingLeaseActive(
+  processingStatus: JourneyProcessingState | undefined,
+  updatedAt: number,
+  now: number,
+): boolean {
+  if (!["queued", "reading", "ordering", "grouping", "shaping"].includes(processingStatus ?? "")) return false;
+  return now - updatedAt <= PROCESSING_LEASE_MS;
+}
+
+export type EnrichmentFields = {
+  memory: string;
+  detail: string;
+  recommendation: string;
+  warning: string;
+};
+
+export function enrichmentError(fields: EnrichmentFields): string | null {
+  const overLimit = Object.entries(fields).find(([, value]) => value.length > MAX_ENRICHMENT_LENGTH);
+  if (!overLimit) return null;
+  const labels: Record<keyof EnrichmentFields, string> = {
+    memory: "Memory",
+    detail: "Useful detail",
+    recommendation: "Recommendation",
+    warning: "Warning",
+  };
+  return `${labels[overLimit[0] as keyof EnrichmentFields]} must be ${MAX_ENRICHMENT_LENGTH.toLocaleString("en")} characters or fewer.`;
+}
+
+export function manualMomentKey(requestId: string): string {
+  return `manual:${requestId.trim()}`;
 }
 
 export function coordinateKey(latitude: number, longitude: number): string {

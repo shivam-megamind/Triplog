@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types lib/trip.test.ts",
+    "test:e2e": "node scripts/test-core-browser.mjs",
     "test:server-assets": "node scripts/check-server-assets.mjs"
   },
   "dependencies": {

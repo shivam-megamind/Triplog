@@ -5,6 +5,48 @@
 **Status:** Implementation and automated validation complete; hands-on browser verification remains open  
 **Phase 2:** Not started
 
+## Core stabilization and visual design pass — 3 September 2026
+
+This later section supersedes earlier “no browser connected” notes only for the exact core flow listed below. The owner's existing Goa journey, a forced failure, GPS-bearing browser input, and two-account sharing still require manual checks.
+
+### Confirmed root causes
+
+1. **Additional-photo error:** `beginUpload` rejected an upload whenever any other journey had a processing label, even if that record had been abandoned for hours. Development data showed Goa with six intact photos and a separate Thailand journey stuck in `shaping`; the Convex log showed the exact `Finish or retry the other active journey` exception. A second issue allowed an immediate file choice before completed upload records had loaded, and the browser-provided modification time was not stable enough to be the only duplicate check.
+2. **Memories appeared unreliable:** the database contained the saved Goa memory and useful detail, but the old reader displayed only the first non-empty enrichment field. The editor also used a 900 ms local timer, so leaving before it fired could lose recent text. Convex silently shortened each value to 2,000 characters.
+3. **Save remained visible:** editable sections mixed always-open inputs, timed autosave, and manual save patterns. There was no single state transition back to a clean reader.
+4. **Preview returned unexpectedly:** recipient-preview state lived inside the workspace that also reacted to live Convex journey updates. The preview write refreshed that record and could reset the local screen state.
+5. **Timeline photographs were blank:** the new one-photo layout changed its grid to a block, while Next Image's `fill` image remained absolutely positioned. The child figure therefore had zero height even though the image downloaded successfully.
+
+### Result
+
+- Existing saved photographs and journey records were left intact. Goa remained at six photos during diagnosis.
+- Additional photos now show the saved count, wait for the duplicate index, reserve and upload only selected new files, reconstruct, and return to the updated timeline. Failed files keep their filename and a per-file **Retry** action. Same-event double submission is blocked.
+- Recent processing on another journey still prevents unsafe concurrent reconstruction. A processing record older than 15 minutes becomes a visible retryable error instead of blocking every later upload.
+- Memory, Useful detail, Recommendation, and Warning are stored exactly up to a visible 20,000-character limit. Save is disabled when unchanged, displays **Saving…**, closes only after server confirmation, and becomes Edit in read state. Failure keeps the typed draft and offers Retry.
+- Title/cover, trip details, stop name, enrichment, and unphotographed memory use the same read/edit/save/cancel pattern where applicable. Manual-memory requests are repeat-safe.
+- The authenticated owner workspace now uses a compact sticky header, journey facts, GPS-backed stop overview or no-GPS fallback, approximate-sequence label, horizontal day chips, chronological stop cards, responsive photo grids/carousels, and quiet contextual enrichment actions.
+- The shared journey uses the same foundation without owner controls.
+- Repeated `No personal notes added` copy is removed.
+
+### Browser and automated evidence
+
+- `npm run test` passed: 33 tests, 0 failures.
+- `npm run lint` passed.
+- `npm run typecheck` passed.
+- `npm run build` passed with Next.js 16.3.3. The existing non-fatal `Couldn't load fs` and `Couldn't load zlib` messages remain during static generation.
+- `npx convex dev --once` passed and made the functions ready on development deployment `aware-rook-625`.
+- After restarting the production server against the new build, `npm run test:server-assets` passed for `/`, `/book`, and all 12 referenced JavaScript files.
+- `npm run test:e2e` passed in installed Playwright Chromium against the development Convex deployment.
+- The browser created a new account and journey, uploaded `coast.jpg`, placed the undated photo, saved all four enrichment fields with a double click, refreshed, reopened the journey, and found the values persisted.
+- It opened and cancelled Add photos, uploaded only `road.jpg`, placed it, observed two saved photos, reselected `road.jpg`, and received the duplicate rejection without a third photo.
+- Timeline → recipient preview → timeline passed.
+- 1440×1000, 768×1024, and 390×844 checks found no horizontal overflow, no hidden essential top-bar controls, and timeline photos with at least 300 px rendered height.
+- Screenshots are in `.validation/core-stabilization/`: full-page and timeline-viewport images for desktop, tablet, and mobile.
+- The browser fixture had no GPS metadata, so the refined no-GPS state was verified. The geographic plotting path was not exercised with a GPS-bearing browser upload.
+- A forced network/server failure was not injected into the real browser run. Draft retention and Retry are implemented for rejected saves, but that exact failure interaction remains a manual check.
+
+The landing page, landing styles, authentication form/action, signed-out redirect, and sign-out implementation were not redesigned or edited in this pass. No dependency, paid map service, new API key, security work, payment work, production-email work, or unrelated scale work was added.
+
 ## 1. Phase 1 objective
 
 Phase 1 focused on the core action:

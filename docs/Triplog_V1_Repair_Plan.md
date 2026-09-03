@@ -8,7 +8,7 @@ Phase 1 is limited to the core upload-to-timeline outcome: dates, multiple place
 
 The working assumption is 10–100 selected photos. A 100-photo internal safety limit replaces the former large-collection requirement; a selection over that limit is rejected in full. JPEG, PNG, and WebP remain supported. HEIC and HEIF are clearly rejected in V1, with no conversion dependency. Pagination, scheduled deletion changes, and upload infrastructure justified only by unusually large journeys are no longer Phase 1 requirements.
 
-Phase 1 currently has 19 passing unit checks, including the 100-photo boundary, multiple GPS-backed stops on one date, chronological moments, dated photos without GPS under **Location unknown**, and the complete ready-journey navigation transition. Lint, type checking, and the production build also pass. Real-photo, phone-layout, correction-persistence, and two-account sharing checks remain open because no browser was connected; they are not inferred from code alone.
+Phase 1 currently has 33 passing unit checks. A later core-stabilization Chromium run also proves two-file additional upload, four-field note persistence after refresh and reopening, preview/back navigation, compact empty enrichment, rendered photos, and layouts at 390px, 768px, and 1440px. GPS-bearing browser input, forced network failure, normal 10–100-photo scale, and two-account sharing remain open and are not inferred from code alone.
 
 ## Finding verification
 
@@ -102,3 +102,16 @@ These findings are verified but deliberately excluded from the repair work:
 They touch the protected landing or authentication surfaces. I will not change them without separate permission. Sign-out-to-landing will remain unchanged throughout.
 
 The HEIC/HEIF decision is resolved: V1 rejects those files with a clear explanation and adds no conversion dependency.
+
+## Core stabilization pass — 3 September 2026
+
+Completed in this repair slice:
+
+- Removed the permanent cross-journey upload block caused by an abandoned processing status. Recent processing keeps a 15-minute lease; older records become retryable errors.
+- Added saved-file duplicate checks on both the client and server, a saved-photo count, a short duplicate-index loading guard, filename-specific failed states, per-file Retry, and a same-event upload lock.
+- Replaced delayed note autosave with explicit Save/Cancel, confirmed success, retained drafts on failure, Retry, and double-submit locks. Removed server-side silent shortening of traveller text and raised the visible limit to 20,000 characters per field.
+- Made manual-memory creation repeat-safe with a stable request key.
+- Added consistent authenticated back navigation, stable recipient-preview navigation, a compact journey header, photo-backed overview, day chips, photo-led responsive moments, contextual enrichment panels, and shared-view visual parity without owner controls.
+- Removed repeated empty-note sentences and fixed the zero-height one-photo layout.
+
+Evidence: 33 unit tests, lint, type checking, the Next.js production build, Convex validation on `aware-rook-625`, and the production JavaScript asset check pass. The real Chromium regression also passes at 1440px, 768px, and 390px.

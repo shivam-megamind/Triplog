@@ -3,10 +3,10 @@
 import Image from "next/image";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { dateInputTimestamp, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, type JourneyDetailsErrors, type JourneyDetailsInput } from "@/lib/trip";
+import { dateInputTimestamp, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, MAX_DESTINATION_LENGTH, MAX_TITLE_LENGTH, type JourneyDetailsErrors, type JourneyDetailsInput } from "@/lib/trip";
 
 type TripSummary = FunctionReturnType<typeof api.trips.listMine>[number];
 type SharedTripSummary = FunctionReturnType<typeof api.trips.listSharedWithMe>[number];
@@ -34,7 +34,6 @@ export function JourneysHome({
   sharedTrips,
   deletedTrips,
   onContinue,
-  onDetailsSaved,
   onOpenShared,
   onCreate,
   onSignOut,
@@ -43,7 +42,6 @@ export function JourneysHome({
   sharedTrips: SharedTripSummary[];
   deletedTrips: DeletedTripSummary[];
   onContinue: (tripId: Id<"trips">) => void;
-  onDetailsSaved: (tripId: Id<"trips">) => void;
   onOpenShared: (shareToken: string) => void;
   onCreate: () => void;
   onSignOut: () => void;
@@ -63,6 +61,7 @@ export function JourneysHome({
   const [busy, setBusy] = useState(false);
   const [openedAt] = useState(() => Date.now());
   const [feedback, setFeedback] = useState<{ tripId: Id<"trips">; text: string; error?: boolean } | null>(null);
+  const actionLock = useRef(false);
 
   function beginRename(trip: TripSummary) {
     setRenamingId(trip._id);
@@ -87,6 +86,7 @@ export function JourneysHome({
   }
 
   async function saveDetails(trip: TripSummary) {
+    if (actionLock.current) return;
     const values = {
       destination: detailsInput.destination,
       startDate: dateInputTimestamp(detailsInput.startDate),
@@ -96,6 +96,7 @@ export function JourneysHome({
     setDetailsErrors(nextErrors);
     setFeedback(null);
     if (Object.keys(nextErrors).length) return;
+    actionLock.current = true;
     setBusy(true);
     try {
       await updateDetails({
@@ -105,15 +106,18 @@ export function JourneysHome({
         endDate: values.endDate!,
       });
       setEditingDetailsId(null);
-      onDetailsSaved(trip._id);
+      setFeedback({ tripId: trip._id, text: "Trip details saved. The timeline is being reconstructed from the same photos." });
     } catch {
       setFeedback({ tripId: trip._id, text: "These trip details could not be saved. Check them and try again.", error: true });
     } finally {
       setBusy(false);
+      actionLock.current = false;
     }
   }
 
   async function saveRename(tripId: Id<"trips">) {
+    if (actionLock.current) return;
+    actionLock.current = true;
     setBusy(true);
     setFeedback(null);
     try {
@@ -124,6 +128,7 @@ export function JourneysHome({
       setFeedback({ tripId, text: "Add a title before saving.", error: true });
     } finally {
       setBusy(false);
+      actionLock.current = false;
     }
   }
 
@@ -191,7 +196,7 @@ export function JourneysHome({
                     <p className="journey-processing">{processingLabel(trip.processingStatus)}</p>
                   </div>
                   <details className="journey-actions">
-                    <summary aria-label={`Actions for ${trip.title}`}>•••</summary>
+                    <summary aria-label={`Actions for ${trip.title}`}>…</summary>
                     <div>
                       <button type="button" onClick={() => beginRename(trip)}>Rename</button>
                       <button type="button" onClick={() => beginDetailsEdit(trip)}>Edit trip details</button>
@@ -201,8 +206,8 @@ export function JourneysHome({
                 </div>
                 {renamingId === trip._id ? (
                   <section className="journey-card-panel" aria-label={`Rename ${trip.title}`}>
-                    <label>Journey title<input value={title} onChange={(event) => setTitle(event.target.value)} autoFocus /></label>
-                    <div><button className="text-button" disabled={busy} onClick={() => setRenamingId(null)}>Cancel</button><button className="secondary-button" disabled={busy || !title.trim()} onClick={() => void saveRename(trip._id)}>{busy ? "Saving…" : "Save title"}</button></div>
+                    <label>Journey title<input value={title} maxLength={MAX_TITLE_LENGTH} onChange={(event) => setTitle(event.target.value)} autoFocus /><span>{title.length} / {MAX_TITLE_LENGTH}</span></label>
+                    <div><button className="text-button" disabled={busy} onClick={() => setRenamingId(null)}>Cancel</button><button className="secondary-button" disabled={busy || !title.trim() || title.trim() === trip.title} onClick={() => void saveRename(trip._id)}>{busy ? "Saving…" : feedback?.error ? "Retry" : "Save"}</button></div>
                   </section>
                 ) : null}
                 {editingDetailsId === trip._id ? (
@@ -214,7 +219,7 @@ export function JourneysHome({
                     <form onSubmit={(event) => { event.preventDefault(); void saveDetails(trip); }} noValidate>
                       <label>
                         Destination or trip region
-                        <input value={detailsInput.destination} onChange={(event) => { setDetailsInput((current) => ({ ...current, destination: event.target.value })); setDetailsErrors((current) => ({ ...current, destination: undefined })); }} aria-invalid={Boolean(detailsErrors.destination)} />
+                        <input value={detailsInput.destination} maxLength={MAX_DESTINATION_LENGTH} onChange={(event) => { setDetailsInput((current) => ({ ...current, destination: event.target.value })); setDetailsErrors((current) => ({ ...current, destination: undefined })); }} aria-invalid={Boolean(detailsErrors.destination)} />
                         {detailsErrors.destination ? <span className="field-error">{detailsErrors.destination}</span> : null}
                       </label>
                       <div className="trip-details-dates">

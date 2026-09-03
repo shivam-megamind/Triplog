@@ -159,3 +159,14 @@ Every milestone must be independently demonstrable in roughly 10 seconds. The se
 | 29 | [ ] **I can close the website during a draft, reopen it, and find my uploads, processing state, corrections, memories, journey order, sharing state, and recipient access intact.** | Frontend / Backend / Database / Integration |
 
 The milestones should be implemented and accepted in order. A later milestone does not compensate for an earlier broken one, and no NICE TO HAVE or NOT THIS WEEK feature enters the build until Milestone 29 passes.
+
+## 3 September 2026 stabilization evidence
+
+This approved stabilization slice repaired additional-photo intake, explicit enrichment persistence, navigation, and the authenticated visual foundation without changing the landing page or authentication design.
+
+- A real Chromium run created a journey, uploaded one JPEG, saved Memory, Useful detail, Recommendation, and Warning, double-clicked Save, refreshed, reopened, and found all four values persisted.
+- The same run opened **Add photos**, confirmed the existing count, returned without uploading, added one different JPEG, returned to the reconstructed timeline with two photos, and rejected reselection of the saved second file.
+- Timeline → recipient preview → timeline passed after moving preview navigation state above the live journey record.
+- Owner layouts passed at 1440px, 768px, and 390px with no horizontal overflow, visible essential controls, and rendered timeline photographs.
+- The no-GPS state was verified in the browser. GPS stop plotting remains supported by the evidence model but was not exercised with a GPS-bearing browser fixture in this run.
+- Forced network/server failure recovery and the complete two-account share flow remain open; their milestones are not accepted by this slice.

@@ -16,7 +16,7 @@ The landing page is separate from the private product. A failure in the private 
 
 ## Validation status
 
-Milestone 1's automated checks pass. The existing saved desktop and mobile screenshots confirm the retained responsive layout. Fresh interactive browser testing was unavailable in this session and remains the only validation limitation for this milestone.
+Milestone 1's automated checks pass. The existing saved desktop and mobile screenshots confirm the retained responsive layout. The later core-stabilization browser run opened the protected landing CTA and created an account without changing the landing source.
 
 ## Milestone 2 — authentication
 
@@ -33,13 +33,13 @@ The authentication interface is separate from journey ownership checks. Convex q
 
 ## Milestone 2 validation status
 
-The retained authentication files have no source differences. Existing end-to-end evidence covers creating an account, signing in, and reaching the private product. Fresh automated click testing was unavailable because no connected browser was available in this session; the user-facing review should confirm the full sign-up, sign-out, and sign-back-in loop.
+The retained authentication files have no source differences. The core-stabilization Chromium run created a new account through the landing dialog and reached the private product. The full sign-out and sign-back-in loop remains a user confirmation.
 
 ### Phase 1 blocker repair
 
 The Sign in and Create journey buttons were rendered in their normal disabled loading state, but the browser could not hydrate them because one JavaScript file referenced by the running server returned HTTP 500. The server had remained open while `next build` replaced its `.next` output, leaving the running process with an old in-memory asset list and a newly generated folder. Phase 1 CSS did not cover, hide, or disable the buttons.
 
-The repair was operational: stop the old server, run a clean production build, and restart `next start` against that build. `npm run test:server-assets` now checks both `/` and `/book` plus every JavaScript file they reference; all 12 currently return HTTP 200. No landing or authentication component was changed. A connected browser was still unavailable, so the live sign-in, signup, redirect, and sign-out loop remains a user confirmation rather than an automated claim.
+The repair was operational: stop the old server, run a clean production build, and restart `next start` against that build. `npm run test:server-assets` checks both `/` and `/book` plus every JavaScript file they reference. No landing or authentication component was changed. A later Chromium run proved signup and the redirect into `/book`; sign-out and returning sign-in remain manual checks.
 
 ### Phase 1 reconstruction-navigation blocker
 
@@ -86,7 +86,7 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 
 - A suggested stop name can be corrected, and a moment can move between existing dates or stops. Those user choices are stored and retained during later reconstruction.
 - Moments can be hidden from the timeline without deleting any original upload.
-- Contextual questions are optional, collapsed until requested, and autosave after a short pause. Unphotographed memories can be added to the relevant stop.
+- Contextual enrichment is optional and collapsed until requested. Memory, useful detail, recommendation, and warning use explicit Save and Cancel; unphotographed memories can be added to the relevant stop.
 - The owner and recipient views use a clear mobile-first timeline of dates, stops, moments, selected photos, memories, recommendations, and warnings. They do not use a coffee-table-book, magazine, or PDF layout.
 - Recipient preview excludes Possibly unrelated and Unplaced photos. Publishing requires confirmed destination, dates, title, cover, and at least one recipient preview.
 
@@ -100,7 +100,7 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 ## Milestones 28–29 — normal journey size and persistence
 
 - V1 is designed around approximately 10–100 selected photos. The internal 100-photo safety limit is not promoted as a product feature, and any selection that would exceed it is rejected in full.
-- Upload records, processing state, corrections, ordering, memories, sharing state, and recipient access live in Convex rather than browser memory. Edits autosave continuously.
+- Upload records, processing state, corrections, ordering, memories, sharing state, and recipient access live in Convex rather than browser memory. Editable sections wait for an explicit save and show success only after Convex confirms it.
 - A persistence audit in two separate backend sessions returned the same 10 journeys, 31 photos, 13 moments, 4 written memories, and 2 recipient-access records. The temporary audit function was then removed.
 - A real 5–10-photo Phase 1 browser run, a prepared normal 10–100-photo check, and correction/share persistence checks remain required before the affected milestones can be accepted.
 
@@ -109,10 +109,25 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 - The automated test suite has 25 passing checks. It covers the internal 100-photo boundary, multiple GPS-backed stops on one date, chronological moment ordering, the **Location unknown** result for a dated photo without GPS, ready-journey navigation after upload and reopening, zero-visible-moment review, out-of-range dates, and older stop-less data.
 - Lint, TypeScript checking, and the production build pass.
 - The protected landing, authentication, redirect, and `/book` route files have the same SHA-256 file hashes recorded before Phase 1. The sign-out handler still signs out and replaces the browser location with `/`.
-- No browser was connected during final validation. Real-photo upload, mobile and desktop appearance, correction persistence after reopening/reconstruction, and the two-account shared journey still need hands-on verification.
+- The later core-stabilization browser run verified a two-photo journey, note persistence after refresh and reopening, and 390px, 768px, and 1440px layouts. GPS-bearing input, forced save failure, normal 10–100-photo scale, and the two-account shared journey still need hands-on verification.
 
 ## Resend environments
 
 - Development defaults to `Triplog <onboarding@resend.dev>` and `delivered+trip-ready@resend.dev`. The real account email is not contacted in testing mode.
 - Production must have `RESEND_API_KEY`, `RESEND_TEST_MODE=false`, `RESEND_FROM_EMAIL` set to a sender on a verified domain, and `SITE_URL` set to the deployed website origin in the production Convex deployment.
 - No Resend secret is stored in the repository or sent to the browser.
+
+## Core stabilization and travel workspace
+
+The authenticated product now behaves like a journey browser first and an editor only when asked.
+
+- The sticky top bar always gives the owner a route back to **Your journeys**, plus **Add photos** and **Preview and share**. Preview keeps its navigation state outside the live journey record, so a Convex refresh cannot throw the user back unexpectedly.
+- Additional uploads compare a selected file with completed upload records before reserving it. A recent reconstruction on another journey still blocks a competing upload, but a record older than 15 minutes is treated as stalled and changed to a retryable error.
+- Notes no longer wait on a short browser timer. The draft remains in the form until Convex confirms it, then the editor closes and the saved text is shown. A failed request leaves the draft present and changes the action to **Retry**.
+- Manual memories carry a request identifier. Repeating the same request returns the existing record instead of adding a second memory.
+- The route overview plots only stops that have photo GPS. Its dotted connection is labelled an approximate sequence. When no GPS exists, the interface says so and keeps the dated timeline prominent.
+- One-photo moments need an explicit child height because Next Image uses an absolutely positioned image for `fill`. Without that height, the image can download correctly but paint into a zero-height box.
+
+The browser regression creates a private test journey, uploads two real JPEG files, saves all four enrichment fields, refreshes and reopens, checks duplicate upload prevention and preview navigation, then records desktop, tablet, and mobile screenshots. It does not prove a forced network failure, a GPS-bearing upload, or the full two-account share flow.
+
+To run that check locally, start `npm run dev -- -p 3001` in one terminal. In a second terminal run `npm run test:e2e`. The test uses the Playwright browser package already installed in this project and writes its screenshots under `.validation/core-stabilization`.

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, journeyTitle, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
+import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, journeyTitle, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, publicationRecords, selectPublicationCoverPhoto, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
 import { groupPhotosIntoMoments, groupedPhotoCount, reconstructTravelTimeline, visualHashDistance } from "./reconstruction.ts";
 import { shouldOfferLocationSuggestion, suggestJourneyTitle } from "./title-suggestion.ts";
 import { canonicalPhotoMimeType, createTaskLimiter, originalFallbackMimeType, photoFileError, photoFormat, uploadItemNeedsSource } from "./photo-upload.ts";
@@ -149,6 +149,65 @@ test("an empty generated journey title falls back without blocking publishing", 
 
 test("publishing still requires a genuinely usable cover", () => {
   assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", recipientPreviewedAt: 3, photoCount: 2, days: [{ displayDate: "14 October 2025", place: "Gion, Kyoto" }] }), "Choose a usable cover photograph.");
+});
+
+test("publishing a fresh journey uses its only included photo as the cover", () => {
+  const photo = { _id: "photo-1", tripId: "trip-1", order: 0, capturedAt: 100, reviewState: "included" as const };
+
+  assert.equal(selectPublicationCoverPhoto("trip-1", undefined, [photo]), photo);
+});
+
+test("publishing without a saved cover uses the first valid included photo", () => {
+  const photos = [
+    { _id: "unrelated", tripId: "trip-1", order: 0, capturedAt: 50, reviewState: "possibly_unrelated" as const },
+    { _id: "later", tripId: "trip-1", order: 1, capturedAt: 300, reviewState: "included" as const },
+    { _id: "first", tripId: "trip-1", order: 2, capturedAt: 100, reviewState: "included" as const },
+  ];
+
+  assert.equal(selectPublicationCoverPhoto("trip-1", undefined, photos)?._id, "first");
+});
+
+test("publishing preserves an existing explicit cover", () => {
+  const photos = [
+    { _id: "first", tripId: "trip-1", order: 0, capturedAt: 100, reviewState: "included" as const },
+    { _id: "chosen", tripId: "trip-1", order: 1, capturedAt: 300, reviewState: "included" as const },
+  ];
+
+  assert.equal(selectPublicationCoverPhoto("trip-1", "chosen", photos)?._id, "chosen");
+});
+
+test("publishing keeps the existing error path when no included photo is usable", () => {
+  const photos = [
+    { _id: "other-trip", tripId: "trip-2", order: 0, reviewState: "included" as const },
+    { _id: "unrelated", tripId: "trip-1", order: 1, reviewState: "possibly_unrelated" as const },
+  ];
+
+  assert.equal(selectPublicationCoverPhoto("trip-1", undefined, photos), undefined);
+});
+
+test("fallback cover persistence and share-link creation use the same publication records", () => {
+  const cover = selectPublicationCoverPhoto("trip-1", undefined, [
+    { _id: "photo-1", tripId: "trip-1", order: 0, reviewState: "included" as const },
+  ]);
+  assert.ok(cover);
+
+  const records = publicationRecords({
+    tripId: "trip-1",
+    coverPhotoId: cover._id,
+    title: "Kyoto",
+    shareToken: "share-token",
+    now: 123,
+  });
+
+  assert.deepEqual(records.shareLink, { tripId: "trip-1", token: "share-token", createdAt: 123 });
+  assert.deepEqual(records.tripPatch, {
+    title: "Kyoto",
+    coverPhotoId: "photo-1",
+    published: true,
+    shareToken: "share-token",
+    processingStatus: "ready",
+    updatedAt: 123,
+  });
 });
 
 test("nearby coordinates share one cache key", () => {

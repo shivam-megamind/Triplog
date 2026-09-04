@@ -143,6 +143,49 @@ export function initialPhotoReviewState({
   return outsideTrip ? "possibly_unrelated" : "included";
 }
 
+export function selectPublicationCoverPhoto<TPhoto extends {
+  _id: string;
+  tripId: string;
+  order: number;
+  capturedAt?: number;
+  reviewState?: PhotoReviewState | "removed";
+}>(tripId: string, savedCoverPhotoId: string | undefined, photos: readonly TPhoto[]): TPhoto | undefined {
+  const isUsable = (photo: TPhoto) => photo.tripId === tripId && (photo.reviewState ?? "included") === "included";
+  if (savedCoverPhotoId !== undefined) {
+    const savedCover = photos.find((photo) => photo._id === savedCoverPhotoId);
+    return savedCover && isUsable(savedCover) ? savedCover : undefined;
+  }
+  return [...photos]
+    .sort((left, right) => (left.capturedAt ?? Number.MAX_SAFE_INTEGER) - (right.capturedAt ?? Number.MAX_SAFE_INTEGER) || left.order - right.order)
+    .find(isUsable);
+}
+
+export function publicationRecords<TTripId extends string, TPhotoId extends string>({
+  tripId,
+  coverPhotoId,
+  title,
+  shareToken,
+  now,
+}: {
+  tripId: TTripId;
+  coverPhotoId: TPhotoId;
+  title: string;
+  shareToken: string;
+  now: number;
+}) {
+  return {
+    shareLink: { tripId, token: shareToken, createdAt: now },
+    tripPatch: {
+      title,
+      coverPhotoId,
+      published: true,
+      shareToken,
+      processingStatus: "ready" as const,
+      updatedAt: now,
+    },
+  };
+}
+
 export function tripDetailsReprocessingPlan(
   photos: Array<{
     id: string;

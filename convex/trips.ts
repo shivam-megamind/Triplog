@@ -11,6 +11,8 @@ import {
   MAX_LOCATION_LENGTH,
   MAX_PHOTOS,
   MAX_TITLE_LENGTH,
+  publicationRecords,
+  selectPublicationCoverPhoto,
   tripDetailsReprocessingPlan,
 } from "../lib/trip";
 import { groupedPhotoCount, reconstructTravelTimeline } from "../lib/reconstruction";
@@ -1303,9 +1305,8 @@ export const publish = mutation({
   args: { tripId: v.id("trips"), title: v.optional(v.string()) },
   handler: async (ctx, { tripId, title }) => {
     const trip = await requireOwnedTrip(ctx, tripId);
-    const [photo, cover, days, moments, existingLinks] = await Promise.all([
-      ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).first(),
-      trip.coverPhotoId ? ctx.db.get(trip.coverPhotoId) : Promise.resolve(null),
+    const [photos, days, moments, existingLinks] = await Promise.all([
+      ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
       ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
       ctx.db.query("moments").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
       ctx.db.query("shareLinks").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
@@ -1313,9 +1314,10 @@ export const publish = mutation({
     if (!trip.destination?.trim() || trip.startDate === undefined || trip.endDate === undefined) throw new ConvexError("Confirm the destination and trip dates before sharing.");
     const cleanTitle = journeyTitle(title ?? trip.title);
     if (cleanTitle.length > MAX_TITLE_LENGTH) throw new ConvexError(`Keep the journey title under ${MAX_TITLE_LENGTH} characters.`);
-    if (!cover || cover.tripId !== tripId || (cover.reviewState ?? "included") !== "included") throw new ConvexError("Choose a usable cover photograph before sharing.");
+    const cover = selectPublicationCoverPhoto(tripId, trip.coverPhotoId, photos);
+    if (!cover) throw new ConvexError("Choose a usable cover photograph before sharing.");
     if (!trip.recipientPreviewedAt) throw new ConvexError("Preview the recipient experience before sharing.");
-    if (photo === null || days.length === 0 || moments.length === 0) throw new ConvexError("Finish reconstructing this journey before sharing.");
+    if (photos.length === 0 || days.length === 0 || moments.length === 0) throw new ConvexError("Finish reconstructing this journey before sharing.");
     if (trip.published && trip.shareToken) {
       const active = existingLinks.find((link) => link.token === trip.shareToken && link.revokedAt === undefined);
       if (active) return active.token;
@@ -1325,8 +1327,9 @@ export const publish = mutation({
       if (link.revokedAt === undefined) await ctx.db.patch(link._id, { revokedAt: now });
     }
     const shareToken = crypto.randomUUID();
-    await ctx.db.insert("shareLinks", { tripId, token: shareToken, createdAt: now });
-    await ctx.db.patch(tripId, { title: cleanTitle, published: true, shareToken, processingStatus: "ready", updatedAt: now });
+    const publication = publicationRecords({ tripId, coverPhotoId: cover._id, title: cleanTitle, shareToken, now });
+    await ctx.db.insert("shareLinks", publication.shareLink);
+    await ctx.db.patch(tripId, publication.tripPatch);
     return shareToken;
   },
 });

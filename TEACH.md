@@ -167,3 +167,9 @@ The real Safari fallback upload was healthy: its photo record pointed to one non
 Stored journey photos now keep Next Image's sizing and layout behavior but use its supported direct-delivery mode. The browser requests the existing Convex photo address itself, so an optimized WebP and a fallback JPEG, PNG, or WebP follow the same display path. This does not create, convert, or store another photo.
 
 There are two different three-dot menus: one on a journey card and one inside an open journey. The earlier fix covered only the card menu, while the real iPhone test used the open-journey menu. Both menus now keep their open/closed value in React state. Selecting an action changes that value to closed in the same render that opens the editor or delete confirmation, preventing both layers from remaining visible together.
+
+## Publish-time cover safety
+
+Recipient Preview could already display the first included photo when a fresh journey did not yet have a saved main-photo ID. Publishing previously checked only the saved ID, so the screen looked ready while the server rejected it.
+
+Publishing now keeps any main photo the traveller explicitly chose. When that saved value is absent, the server finds the first included photo in the journey's chronological order, checks that it belongs to the journey, and saves its ID together with the published state and share token. Convex performs those writes as one all-or-nothing transaction, so the journey cannot be published with a link while missing the chosen cover. If no included photo exists, the existing cover error remains.

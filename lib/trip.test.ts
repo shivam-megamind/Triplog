@@ -4,6 +4,7 @@ import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateIn
 import { groupPhotosIntoMoments, groupedPhotoCount, reconstructTravelTimeline, visualHashDistance } from "./reconstruction.ts";
 import { shouldOfferLocationSuggestion, suggestJourneyTitle } from "./title-suggestion.ts";
 import { createTaskLimiter, photoFileError, photoFormat } from "./photo-upload.ts";
+import { createJourneyMapScene, spreadJourneyMapPoints } from "./journey-map.ts";
 
 const fileDetails = (name: string, type: string, size = 1024) => ({ name, type, size });
 
@@ -256,6 +257,90 @@ test("a GPS-backed Goa stop suggests Goa instead of a stale country", () => {
 
 test("manual places do not masquerade as photo metadata", () => {
   assert.equal(suggestJourneyTitle([{ dayNumber: 1, place: "Goa, India", placeSource: "manual", photoCount: 8 }]), null);
+});
+
+test("the Japan journey map fits chronological GPS stops inside its padded frame", () => {
+  const stops = [
+    { id: "tokyo", latitude: 35.6762, longitude: 139.6503 },
+    { id: "kyoto", latitude: 35.0116, longitude: 135.7681 },
+    { id: "osaka", latitude: 34.6937, longitude: 135.5023 },
+  ];
+  for (const size of [
+    { width: 390, height: 370 },
+    { width: 768, height: 480 },
+    { width: 1440, height: 510 },
+  ]) {
+    const scene = createJourneyMapScene(stops, size);
+    assert.ok(scene);
+    assert.deepEqual(scene.points.map((point) => point.id), ["tokyo", "kyoto", "osaka"]);
+    for (const point of scene.points) {
+      assert.ok(point.x >= 54 && point.x <= size.width - 54);
+      assert.ok(point.y >= 54 && point.y <= size.height - 54);
+    }
+    assert.ok(scene.tiles.length > 0 && scene.tiles.length < 30);
+  }
+});
+
+test("the one-stop Goa map centres closely and does not need a route line", () => {
+  const scene = createJourneyMapScene([
+    { id: "goa", latitude: 15.557387, longitude: 73.750391 },
+  ], { width: 390, height: 370 });
+
+  assert.ok(scene);
+  assert.equal(scene.zoom, 13);
+  assert.equal(scene.points.length, 1);
+  assert.ok(Math.abs(scene.points[0].x - 195) < 0.001);
+  assert.ok(Math.abs(scene.points[0].y - 185) < 0.001);
+});
+
+test("building a journey map scene does not change stop data", () => {
+  const stops = [
+    { id: "first", latitude: 35.003, longitude: 135.778 },
+    { id: "second", latitude: 35.011, longitude: 135.768 },
+  ];
+  const original = structuredClone(stops);
+
+  createJourneyMapScene(stops, { width: 390, height: 245 });
+
+  assert.deepEqual(stops, original);
+  assert.equal(createJourneyMapScene([], { width: 390, height: 245 }), null);
+});
+
+test("nearby journey stops receive distinct display positions without changing their geographic anchors", () => {
+  const points = Array.from({ length: 6 }, (_, index) => ({
+    id: `nearby-${index + 1}`,
+    x: 195,
+    y: 185,
+  }));
+  const original = structuredClone(points);
+  const spread = spreadJourneyMapPoints(points, { width: 390, height: 370 });
+
+  assert.deepEqual(points, original);
+  assert.deepEqual(spread.map((point) => point.id), points.map((point) => point.id));
+  assert.equal(spread[0].displaced, false);
+  assert.ok(spread.slice(1).every((point) => point.displaced));
+  assert.ok(spread.every((point) => point.anchorX === 195 && point.anchorY === 185));
+  for (const point of spread) {
+    assert.ok(point.x >= 24 && point.x <= 366);
+    assert.ok(point.y >= 24 && point.y <= 346);
+  }
+  for (let first = 0; first < spread.length; first += 1) {
+    for (let second = first + 1; second < spread.length; second += 1) {
+      assert.ok(Math.hypot(spread[first].x - spread[second].x, spread[first].y - spread[second].y) >= 44);
+    }
+  }
+});
+
+test("well-separated journey stops stay on their true map positions", () => {
+  const points = [
+    { id: "first", x: 80, y: 90 },
+    { id: "second", x: 240, y: 250 },
+  ];
+
+  assert.deepEqual(spreadJourneyMapPoints(points, { width: 390, height: 370 }), [
+    { id: "first", x: 80, y: 90, anchorX: 80, anchorY: 90, displaced: false },
+    { id: "second", x: 240, y: 250, anchorX: 240, anchorY: 250, displaced: false },
+  ]);
 });
 
 test("an intentional title is never replaced by a suggestion", () => {

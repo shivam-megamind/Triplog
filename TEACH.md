@@ -4,10 +4,10 @@
 
 The existing landing page was retained without a redesign or source change.
 
-- `/` is the public introduction to Triplog.
+- `/` is the public introduction to Postcard.
 - Its main actions let a new visitor create an account and a returning visitor sign in.
 - Authenticated visitors can continue to `/book`.
-- The page explains that Triplog reconstructs a journey from photos, keeps it private by default, and lets the traveller decide what to share.
+- The page explains that Postcard reconstructs a journey from photos, keeps it private by default, and lets the traveller decide what to share.
 - `app/page.tsx` contains the landing content.
 - `app/landing.module.css` contains the landing-only responsive design.
 - `public/images` contains only the example photographs used on the landing page; they are not connected to a user's private photos.
@@ -49,7 +49,7 @@ The upload callback keeps the current journey selected instead of returning to *
 
 ### Phase 1 empty-timeline blocker
 
-The Goa journey proves that **Ready** and “has visible timeline moments” are different facts. Its six photos all report 20 January 2025, while the entered journey dates are 20–26 January 2024. Triplog correctly keeps those photos in **Possibly unrelated**, so the saved journey can be Ready with zero dates, stops, or moments.
+The Goa journey proves that **Ready** and “has visible timeline moments” are different facts. Its six photos all report 20 January 2025, while the entered journey dates are 20–26 January 2024. Postcard correctly keeps those photos in **Possibly unrelated**, so the saved journey can be Ready with zero dates, stops, or moments.
 
 The timeline workspace now normalises missing collections from older or cached journey shapes before rendering. A Ready journey with no visible moments shows a clear review state and a direct **Check these photos** action. An older journey that has moments but no stop structure shows the existing rebuild action. Restoring a possibly unrelated photo uses the saved original and then rebuilds the date, stop, and moment structure; it does not upload another copy or change the entered journey dates.
 
@@ -70,13 +70,13 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 - The picker accepts JPEG, PNG, and WebP photos only, rejects files above 50 MB, and rejects an entire selection if it would take the journey above the internal 100-photo safety limit.
 - HEIC and HEIF are rejected with instructions to export as JPEG, PNG, or WebP. V1 does not add a conversion library.
 - Each selected photo has a persistent Convex upload record. Completed photos are skipped on retry; interrupted or failed items can be reselected and matched without restarting successful items.
-- Triplog stores the unchanged original plus separate thumbnail, display, and large WebP copies made in the browser. The interface clearly says this is not a phone or cloud backup.
+- For a new upload, Postcard reads the untouched device file first, then creates and stores one approximately 1600px WebP. The device original is never sent to Convex. Older photos still use their original, thumbnail, display, and large files without migration.
 - Capture time, GPS, dimensions, duplicate fingerprints, visual fingerprints, and a conservative dark/blurry signal are stored as evidence. GPS coordinates are converted to cached OpenStreetMap place names.
 
 ## Milestones 11–17 — reconstruction and review
 
 - Convex background work orders included photos into dates, multiple place-based stops within each date, and chronological moments. Stops use available GPS evidence; photos with a reliable date but no GPS stay on that date under **Location unknown**.
-- The stop sequence is a sequence of photo-backed places, never a claim about the exact path travelled. Triplog does not invent a location when the evidence is missing.
+- The stop sequence is a sequence of photo-backed places, never a claim about the exact path travelled. Postcard does not invent a location when the evidence is missing.
 - Photos clearly outside the entered dates are retained under Possibly unrelated. Photos without a reliable date remain under Unplaced memories. The traveller can restore or place them.
 - Dark or blurry photos are labelled but kept. A traveller-selected primary photo overrides the system suggestion.
 - The journey has automatic, usable, and enriched completion levels. Title and cover suggestions require explicit confirmation.
@@ -85,17 +85,17 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 ## Milestones 18–21 — guided builder and timeline experience
 
 - A suggested stop name can be corrected, and a moment can move between existing dates or stops. Those user choices are stored and retained during later reconstruction.
-- Moments can be hidden from the timeline without deleting any original upload.
+- Moments can be hidden from the timeline without deleting their saved photo file.
 - Contextual enrichment is optional and collapsed until requested. Memory, useful detail, recommendation, and warning use explicit Save and Cancel; unphotographed memories can be added to the relevant stop.
 - The owner and recipient views use a clear mobile-first timeline of dates, stops, moments, selected photos, memories, recommendations, and warnings. They do not use a coffee-table-book, magazine, or PDF layout.
-- Recipient preview excludes Possibly unrelated and Unplaced photos. Publishing requires confirmed destination, dates, title, cover, and at least one recipient preview.
+- Recipient preview excludes Possibly unrelated and Unplaced photos. A generated title is ready to publish without manual confirmation; an empty generated value becomes `My Journey`. The destination, dates, main photo, and at least one recipient preview keep their existing checks, and the title remains optional to edit.
 
 ## Milestones 22–27 — account-gated sharing and recovery
 
 - A signed-out person with an active unlisted link sees only the creator name, destination, cover, and dates. The complete journey appears on that same link after account creation or sign-in.
 - Recipient access is read-only and saved under Shared with me. Because both owner and recipient read the same Convex records, later owner edits appear in the existing link.
 - Stop sharing revokes the link and removes every saved recipient-access record.
-- Delete moves a journey to Recently Deleted, revokes sharing immediately, and keeps it recoverable for 30 days. Permanent deletion warns first and erases originals, viewing copies, content, upload records, links, and access. A daily Convex job clears expired items.
+- Delete moves a journey to Recently Deleted, revokes sharing immediately, and keeps it recoverable for 30 days. Permanent deletion warns first and erases the one saved file for each new photo, every stored file for each legacy photo, content, upload records, links, and access. A daily Convex job clears expired items.
 
 ## Milestones 28–29 — normal journey size and persistence
 
@@ -113,7 +113,7 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 
 ## Resend environments
 
-- Development defaults to `Triplog <onboarding@resend.dev>` and `delivered+trip-ready@resend.dev`. The real account email is not contacted in testing mode.
+- Development defaults to `Postcard <onboarding@resend.dev>` and `delivered+trip-ready@resend.dev`. The real account email is not contacted in testing mode.
 - Production must have `RESEND_API_KEY`, `RESEND_TEST_MODE=false`, `RESEND_FROM_EMAIL` set to a sender on a verified domain, and `SITE_URL` set to the deployed website origin in the production Convex deployment.
 - No Resend secret is stored in the repository or sent to the browser.
 
@@ -132,9 +132,9 @@ The browser regression creates a private test journey, uploads two real JPEG fil
 
 ## Mobile photo intake and safe areas
 
-The earlier upload queue looked limited because it used three photo workers, but each worker decoded the same full-size image for metadata and viewing copies, created three canvases together, and started four storage transfers together. On a phone that multiplied memory, processor, and network work before the screen could keep up.
+The earlier upload queue looked limited because it used three photo workers, but each worker decoded the same full-size image for metadata and viewing copies, created three canvases together, and started four storage transfers together. On a phone that multiplied memory, processor, network, and stored-file use before the screen could keep up.
 
-The repaired flow paints the selected count as soon as the iOS picker returns. It then prepares one photo at a time, lets at most two photos move through the wider queue, and permits only two storage file bodies at once. Each card still reaches Saved or Failed independently, the batch reports `Uploading X of N`, and a failed filename keeps its own Retry button.
+The repaired flow paints the selected count as soon as the iOS picker returns. It then reads metadata and fingerprints from the original, prepares one approximately 1600px WebP at a time, lets at most two photos move through the wider queue, and permits only two storage file bodies at once. Each card still reaches Saved or Failed independently, the batch reports `Uploading X of N`, and a failed filename keeps its own Retry button.
 
 JPEG, PNG, and WebP remain the dependable formats. Safari can natively decode HEIC and HEIF on supported iPhones, so those files now enter the same pipeline without a new conversion package. A browser that cannot decode one leaves that file visible with instructions to export it as JPEG, PNG, or WebP.
 
@@ -143,3 +143,11 @@ The app now requests `viewport-fit=cover`, which lets CSS see an iPhone's notch 
 The final automated run has 36 passing unit checks, plus passing lint, TypeScript, and production build checks. The production Chromium flow confirmed the journey library at 320, 360, 375, 390, 414, and 430 pixels, confirmed an 18-photo selection at 390 pixels, and rechecked the timeline at every mobile width plus 768 and 1440 pixels. A physical iPhone upload and a real HEIC/HEIF file still need device confirmation because desktop Chromium cannot reproduce iOS memory limits or Apple's safe-area values.
 
 To run that check locally, start `npm run dev -- -p 3001` in one terminal. In a second terminal run `npm run test:e2e`. The test uses the Playwright browser package already installed in this project and writes its screenshots under `.validation/core-stabilization`.
+
+## Single-image photo storage
+
+`storageLayout: "single_optimized_v1"` tells the app that a photo has one durable image. If that field is missing, the photo is legacy, so its original, thumbnail, display, and large identifiers continue to work exactly as before.
+
+For each new selection, the browser finishes EXIF date/GPS reading, exact hashing, and visual fingerprinting against the original file before conversion begins. Native browser decoding also applies the photo orientation when drawing the WebP. HEIC and HEIF follow this same path only when the browser can decode them; otherwise the item fails before any file upload and tells the traveller to export it as JPEG, PNG, or WebP.
+
+Convex checks that the durable upload really is a non-empty WebP before it creates the photo record. If the final record request has an uncertain result, a reconciliation request either confirms the record or removes the unattached file. A small Convex file endpoint reads the saved Blob by its storage identifier; new photos use their one identifier for every display role, while legacy photos still use their separate original, thumbnail, display, and large identifiers. Next.js is allowed to resize Convex's region-qualified image hosts for cards, timelines, maps, and shared journeys. Photo details show four copy links for legacy photos and one **Saved web image** link for new photos.

@@ -7,7 +7,7 @@
 
 ## Delivery rule
 
-The independent review reopened affected milestones. Core Repair Phase 1 is the only currently approved repair slice; stop for user review after its validation. No later milestone or repair phase compensates for an earlier broken one.
+The independent review reopened affected milestones. The current approved slice removes manual title confirmation from publishing and changes the user-facing product name to Postcard without renaming internal infrastructure. Stop for user review after validation.
 
 ## Retained boundary
 
@@ -23,9 +23,9 @@ Only milestones with accepted evidence are checked. The independent review reope
 - [ ] 4. Multiple free journey drafts with correct statuses.
 - [ ] 5. Destination/date entry, validation, duplicate-tap protection, and owner correction after creation. The Phase 1 edit-and-reconstruct path is implemented; browser proof remains.
 - [ ] 6. Photo selection with supported-format checks, conditional browser-native HEIC/HEIF handling, and full rejection above the internal 100-photo safety limit. Automated checks cover format and video rejection; real iPhone proof remains.
-- [ ] 7. Original upload with per-file and overall progress. The mobile repair adds immediate selection confirmation, bounded preparation/transfers, `Uploading X of N`, and filename-specific retry; a real interrupted iPhone upload remains open.
+- [ ] 7. Per-file upload with overall progress. The original is read on the device for evidence and hashes, then one approximately 1600px WebP is uploaded. Immediate selection confirmation, bounded preparation, `Uploading X of N`, and filename-specific retry remain in place; a real interrupted iPhone upload remains open.
 - [ ] 8. Resume unfinished work and retry only failed photos. The stabilization browser run proves that adding one new file preserves the first file, returns to the updated timeline, and rejects reselection of the saved file; a forced network-failure browser run remains open.
-- [ ] 9. Preserved original plus thumbnail, display, and large copies.
+- [ ] 9. One durable optimized image for each new photo, with unchanged read/delete compatibility for legacy original, thumbnail, display, and large files.
 - [ ] 10. Visible date, time, GPS, and readable place evidence. Phase 1 implementation exists; real-photo browser proof remains.
 - [ ] 11. Automatic dates, multiple stops per date, chronological moments, and evidence-based stop sequence. Unit checks pass; real-photo browser proof remains.
 - [ ] 12. Duplicate/similar groups, representative suggestion, and View all.
@@ -33,11 +33,11 @@ Only milestones with accepted evidence are checked. The independent review reope
 - [ ] 14. Location unknown handling plus location and moment-placement correction. Phase 1 implementation exists; persistence needs browser proof.
 - [ ] 15. Low-quality-photo retention and representative override.
 - [ ] 16. Persistent processing status and one idempotent Resend journey-ready email. All reconstruction entry points now use the finish-or-error background path and expose retry; development delivery has evidence, while browser proof remains.
-- [ ] 17. Automatic draft with confirmed title and cover.
+- [ ] 17. Automatic draft with a generated title that is valid by default and the existing confirmed main-photo step.
 - [ ] 18. Move moments between existing dates/stops and preserve originals when hidden. Phase 1 implementation exists; browser proof remains. Other reviewed controls are deferred.
 - [ ] 19. Optional memories, useful details, recommendations, warnings, and unphotographed memories with explicit Save and Cancel. The core browser run proves four-field save, double-click protection, clean read state, and refresh/reopen persistence; forced server-failure recovery remains a manual check.
 - [ ] 20. Practical mobile-first chronological travel timeline for owner and recipient. The redesigned owner workspace has Chromium layout coverage at 320px, 360px, 375px, 390px, 414px, 430px, 768px, and 1440px; physical iPhone safe-area confirmation remains open.
-- [ ] 21. Recipient preview and publish-readiness checks. Timeline → preview → timeline passed in Chromium; the complete two-account publishing flow remains outside this milestone.
+- [ ] 21. Recipient preview and publish-readiness checks. Generated-title and edited-title publishing both passed through separate live links in Chromium without a title-confirmation gate.
 - [ ] 22. Unlisted link with limited signed-out preview.
 - [ ] 23. Recipient authentication returning to the shared journey.
 - [ ] 24. Shared with me reopening and read-only enforcement.
@@ -62,7 +62,7 @@ Only milestones with accepted evidence are checked. The independent review reope
 - Convex provides authentication, database records, and photo storage.
 - OpenStreetMap Nominatim converts one representative coordinate per group into a place name; photos are never sent to it.
 - V1 uses Convex for upload recovery. Completed photos stay saved; failed or unfinished photos are retried or reselected individually. No separate resumable-upload service will be added.
-- Browser photo preparation runs one item at a time, at most two photos move through the outer queue, and at most two storage bodies transfer at once. This bounds iPhone memory and network use without changing Convex storage.
+- Browser photo preparation runs one item at a time, at most two photos move through the outer queue, and at most two storage bodies transfer at once. New photos create one approximately 1600px WebP storage body each. The original is never uploaded, and legacy photos retain their old storage identifiers. A Convex HTTP endpoint reads those stored files by identifier so new and legacy image roles receive browser-safe URLs.
 - Convex background jobs reconstruct a journey after upload, so the browser does not need to remain open.
 - Resend sends the one journey-ready email from the Convex background job. Development defaults to Resend's safe delivered test address; production delivery requires explicit sender settings.
 - Existing recovery behavior remains; Phase 1 adds no complex deletion infrastructure solely for unusually large journeys.
@@ -89,3 +89,6 @@ Only milestones with accepted evidence are checked. The independent review reope
 - 2026-09-03: Treat another journey's processing state as active for 15 minutes. Older processing records become recoverable errors instead of permanently blocking additional uploads.
 - 2026-09-03: Use the existing Playwright browser package for the core regression run; add no dependency or map service. Render GPS-backed stops in a lightweight in-product geographic overview and show a refined dated-timeline fallback when GPS is absent.
 - 2026-09-03: Bound mobile intake to one photo preparation task and two storage transfers at a time, expose immediate selection and batch progress, and use `viewport-fit=cover` plus safe-area CSS for iPhone chrome.
+- 2026-09-04: Make `single_optimized_v1` the storage layout for new photos. Read metadata and duplicate evidence from the untouched source first, upload one approximately 1600px WebP, treat an absent layout as legacy, and keep every legacy read and deletion fallback.
+- 2026-09-04: Serve stored photo Blobs through the existing Convex HTTP host because the deployment's generated `/api/storage/` UUID URLs return `InvalidStoragePath`. Preserve each legacy role's own identifier, and allow region-qualified Convex hosts in Next.js image resizing.
+- 2026-09-04: Use Postcard as the user-facing product name while preserving internal Triplog identifiers. Treat generated journey titles as publishable without manual confirmation, pass the displayed title into publishing, and fall back to `My Journey` when it is empty.

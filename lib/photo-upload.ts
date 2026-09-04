@@ -33,9 +33,15 @@ export function photoFormat(file: PhotoFileDetails): PhotoFormat | undefined {
   return EXTENSION_FORMATS.get(extension);
 }
 
+export function canonicalPhotoMimeType(file: PhotoFileDetails): string | undefined {
+  const format = photoFormat(file);
+  if (!format) return undefined;
+  return format === "jpeg" ? "image/jpeg" : `image/${format}`;
+}
+
 export function photoFileError(file: PhotoFileDetails): string | undefined {
   if (file.type.trim().toLowerCase().startsWith("video/")) {
-    return `${file.name} is a video. Triplog accepts still photos only.`;
+    return `${file.name} is a video. Postcard accepts still photos only.`;
   }
   if (!photoFormat(file)) {
     return `${file.name} is not a supported photo. Choose a JPEG, PNG, WebP, HEIC, or HEIF image.`;

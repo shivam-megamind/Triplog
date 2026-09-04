@@ -48,7 +48,7 @@ export function JourneySetup({ onCreated, onCancel }: { onCreated: (tripId: Id<"
   return (
     <main className="onboarding-shell core-product">
       <header className="onboarding-header">
-        <p className="wordmark">Triplog</p>
+        <p className="wordmark">Postcard</p>
         <p><span className="status-dot" />Private to you</p>
         <button className="text-button" type="button" onClick={onCancel}>Back to journeys</button>
       </header>
@@ -56,7 +56,7 @@ export function JourneySetup({ onCreated, onCancel }: { onCreated: (tripId: Id<"
         <div>
           <p className="eyebrow">Create a journey</p>
           <h1 id="journey-setup-title">Start with the shape of the trip.</h1>
-          <p>Give Triplog just enough context to recognise the photographs. You can correct every suggestion later.</p>
+          <p>Give Postcard just enough context to recognise the photographs. You can correct every suggestion later.</p>
         </div>
         <form className="journey-setup-form" onSubmit={submit} noValidate>
           <label>

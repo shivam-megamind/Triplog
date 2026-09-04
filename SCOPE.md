@@ -13,6 +13,7 @@ A signed-in traveller uploads selected photos from one completed trip and receiv
 ## Retained application surfaces
 
 The existing landing page, signup/sign-in interface, and sign-out-to-landing flow are retained. They must not be redesigned or rebuilt without the user's approval.
+The user-facing product name is Postcard. Existing internal Triplog identifiers, routes, deployments, and infrastructure names remain unchanged.
 
 ## V1 boundaries
 
@@ -21,7 +22,7 @@ The existing landing page, signup/sign-in interface, and sign-out-to-landing flo
 - Unlimited free journeys during Build Week.
 - Normal journeys contain approximately 10–100 selected photos. A 100-photo internal safety limit rejects an over-limit selection in full.
 - JPEG, PNG, and WebP are supported. HEIC and HEIF are also accepted when the current browser can decode them; otherwise that file fails visibly with JPEG/PNG/WebP export guidance. No conversion dependency is added.
-- Original photos remain unchanged. Optimised thumbnail, display, and large-view copies are separate.
+- For new uploads, the original remains on the traveller's device: Postcard reads its evidence, calculates duplicate fingerprints, creates one approximately 1600px WebP, and uploads only that web-ready image. Older four-file photos remain supported without migration, and every displayed role is served from its existing Convex storage identifier without rewriting stored data.
 - Reconstruction may organise evidence and make clearly labelled suggestions, but it must never invent memories, opinions, warnings, recommendations, or an exact travelled path.
 - User-confirmed information always overrides a system suggestion.
 - A reliable date without usable GPS stays on that date under **Location unknown**. The product never invents a place or exact travelled route.
@@ -34,15 +35,15 @@ The existing landing page, signup/sign-in interface, and sign-out-to-landing flo
 - No dependency or external service is added without approval.
 - Convex background jobs may continue reconstruction after the upload page is closed.
 - Failed or stale reconstruction can be retried from the saved photos and must settle in either Ready or a visible error state.
-- An existing journey can accept additional photos. The screen shows the saved count, accepts only new files, preserves existing originals, identifies a failed filename, and retries that item without restarting successful uploads.
+- An existing journey can accept additional photos. The screen shows the saved count, accepts only new files, preserves existing saved images, identifies a failed filename, and retries that item without restarting successful uploads.
 - Multi-photo intake confirms the returned selection before browser image work begins. Photo preparation is serialised and storage transfers use limited concurrency so a normal iPhone selection does not start every decode, canvas, or upload at once.
-- Journey title and cover, trip details, stop names, memories, useful details, recommendations, and warnings use an explicit read → edit → save or cancel interaction. A confirmed save returns to read state; a failed save keeps the draft available for Retry.
+- The generated journey title is valid by default and can be edited before publishing. The main photo, trip details, stop names, memories, useful details, recommendations, and warnings keep their existing explicit save or cancel interactions.
 - Authenticated owner and recipient screens share a warm, photo-led travel workspace with a compact journey header, an evidence-based stop overview, day navigation, and a responsive timeline. A stop sequence is labelled approximate and never presented as an exact travelled route.
 - Resend sends one journey-ready email from Convex. Development uses Resend testing mode; production requires a verified sender domain and production deployment environment settings.
 
 ## Upload recovery decision
 
-V1 continues to use Convex storage. Successfully uploaded photos remain saved. Failed or unfinished photos can be retried or reselected without restarting successful uploads. V1 does not add a separate resumable-upload service and does not promise byte-by-byte continuation inside one interrupted file.
+V1 continues to use Convex storage. Each new photo has one durable optimized WebP. Successfully uploaded photos remain saved; failed or unfinished photos can be retried or reselected without restarting successful uploads. If a WebP reaches storage but its photo record cannot be confirmed, Postcard reconciles the result and removes an unattached file when the server can be reached. V1 does not add a separate resumable-upload service and does not promise byte-by-byte continuation inside one interrupted file.
 
 ## Explicitly outside V1
 

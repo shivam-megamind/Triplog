@@ -10,5 +10,5 @@ export function SignedOutRedirect({ returnTo }: { returnTo: string }) {
     router.replace(`/?auth=sign-in&next=${encodeURIComponent(returnTo)}`);
   }, [returnTo, router]);
 
-  return <div className="center-message" role="status">Returning you to Triplog…</div>;
+  return <div className="center-message" role="status">Returning you to Postcard…</div>;
 }

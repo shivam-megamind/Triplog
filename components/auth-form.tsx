@@ -35,7 +35,7 @@ export function AuthForm({
   return (
     <div className="auth-shell">
       <section className="auth-intro" aria-labelledby="auth-title">
-        <p className="wordmark">Triplog</p>
+        <p className="wordmark">Postcard</p>
         <p className="eyebrow">{context === "share" ? "A journey shared with you" : "A private travel book"}</p>
         <h1 id="auth-title">{context === "share" ? "Someone saved the details worth passing on." : "The photographs you kept. The stories only you know."}</h1>
         <p>{context === "share" ? "Sign in to read the complete journey. Shared books stay private to people who have the link." : "Shape one completed trip into a quiet chapter, built from your photos and told in your voice."}</p>

@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Triplog",
-    short_name: "Triplog",
+    name: "Postcard",
+    short_name: "Postcard",
     description: "Reconstruct, keep, and privately share a completed journey from your photos.",
     start_url: "/",
     display: "standalone",

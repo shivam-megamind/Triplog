@@ -70,7 +70,7 @@ export function LandingAuthAction({
       </button>
       {open ? (
         <div className="landing-auth-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
-          <section className="landing-auth-dialog" role="dialog" aria-modal="true" aria-label={activeMode === "signIn" ? "Sign in to Triplog" : "Create a Triplog account"}>
+          <section className="landing-auth-dialog" role="dialog" aria-modal="true" aria-label={activeMode === "signIn" ? "Sign in to Postcard" : "Create a Postcard account"}>
             <button className="landing-auth-close" type="button" onClick={close} aria-label="Close authentication">Close</button>
             <AuthForm
               context={returnTo.startsWith("/share/") ? "share" : "book"}

@@ -17,7 +17,7 @@ function previewDates(startDate?: number, endDate?: number) {
 function SignedOutPreview({ token }: { token: string }) {
   const preview = useQuery(api.trips.getSharePreview, { shareToken: token });
   if (preview === undefined) return <main className="center-message">Opening the shared preview…</main>;
-  if (preview === null) return <main className="not-found"><p className="wordmark">Triplog</p><h1>This journey is private.</h1><p>The owner may have stopped sharing it.</p></main>;
+  if (preview === null) return <main className="not-found"><p className="wordmark">Postcard</p><h1>This journey is private.</h1><p>The owner may have stopped sharing it.</p></main>;
   return <main className="share-gate"><section className="limited-preview">{preview.coverUrl ? <Image src={preview.coverUrl} alt={`Cover for ${preview.title}`} fill priority sizes="100vw" /> : null}<div><p className="eyebrow">A journey shared by {preview.creatorName}</p><h1>{preview.title}</h1><p>{preview.destination} · {previewDates(preview.startDate, preview.endDate)}</p><span>Sign in to open the complete read-only journey.</span></div></section><AuthForm context="share" initialMode="signIn" /></main>;
 }
 
@@ -33,10 +33,10 @@ function SharedReader({ token }: { token: string }) {
   }, [canRecord, recordAccess, token]);
 
   if (trip === undefined) return <main className="center-message">Opening this journey…</main>;
-  if (trip === null) return <main className="not-found"><p className="wordmark">Triplog</p><h1>This journey is private.</h1><p>The owner may have revoked the link, or the address may be incomplete.</p></main>;
+  if (trip === null) return <main className="not-found"><p className="wordmark">Postcard</p><h1>This journey is private.</h1><p>The owner may have revoked the link, or the address may be incomplete.</p></main>;
   return (
     <main className="public-shell core-product">
-      <header className="journey-bar shared-journey-bar"><button className="back-action" type="button" onClick={() => router.push("/book")}>← Your journeys</button><p className="journey-bar-title">Triplog · Read only</p><span /></header>
+      <header className="journey-bar shared-journey-bar"><button className="back-action" type="button" onClick={() => router.push("/book")}>← Your journeys</button><p className="journey-bar-title">Postcard · Read only</p><span /></header>
       <JourneyTimeline {...trip} readOnly />
       <p className="osm-attribution public-attribution">Place names © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a></p>
     </main>

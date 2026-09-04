@@ -5,6 +5,7 @@ import {
   initialPhotoReviewState,
   isProcessingLeaseActive,
   journeyDetailsErrors,
+  journeyTitle,
   manualMomentKey,
   MAX_ENRICHMENT_LENGTH,
   MAX_LOCATION_LENGTH,
@@ -13,6 +14,7 @@ import {
   tripDetailsReprocessingPlan,
 } from "../lib/trip";
 import { groupedPhotoCount, reconstructTravelTimeline } from "../lib/reconstruction";
+import { durablePhotoStorageIds, photoDeliveryUrl, SINGLE_OPTIMIZED_STORAGE } from "../lib/photo-storage";
 import { suggestJourneyTitle } from "../lib/title-suggestion";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -20,7 +22,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const SUPPORTED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_OPTIMIZED_FILE_SIZE = 12 * 1024 * 1024;
+const SUPPORTED_SOURCE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 const processingStatus = v.union(
   v.literal("selecting"),
   v.literal("queued"),
@@ -55,6 +58,10 @@ function displayDate(dateKey: string) {
     .format(new Date(`${dateKey}T12:00:00Z`));
 }
 
+async function photoRoleUrl(ctx: QueryCtx, storageId: Id<"_storage">) {
+  return photoDeliveryUrl(await ctx.storage.getUrl(storageId), storageId);
+}
+
 async function hydratedTrip(ctx: QueryCtx, trip: Doc<"trips">) {
   const [photos, days, stops, moments] = await Promise.all([
     ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", trip._id)).collect(),
@@ -66,10 +73,10 @@ async function hydratedTrip(ctx: QueryCtx, trip: Doc<"trips">) {
   const displayPhotoIds = new Set(moments.flatMap((moment) => moment.representativePhotoId ? [moment.representativePhotoId] : []));
   if (trip.coverPhotoId) displayPhotoIds.add(trip.coverPhotoId);
   const hydratedPhotos = await Promise.all(sortedPhotos.map(async (photo) => {
-    const [thumbnailUrl, displayUrl] = await Promise.all([
-      ctx.storage.getUrl(photo.thumbnailStorageId ?? photo.storageId),
-      displayPhotoIds.has(photo._id) ? ctx.storage.getUrl(photo.displayStorageId ?? photo.storageId) : null,
-    ]);
+    const thumbnailUrl = await photoRoleUrl(ctx, photo.thumbnailStorageId ?? photo.storageId);
+    const displayUrl = displayPhotoIds.has(photo._id)
+      ? await photoRoleUrl(ctx, photo.displayStorageId ?? photo.storageId)
+      : null;
     return {
       ...photo,
       thumbnailUrl,
@@ -123,6 +130,7 @@ async function hydratedTrip(ctx: QueryCtx, trip: Doc<"trips">) {
   }));
   return {
     ...trip,
+    title: journeyTitle(trip.title),
     photoCount: hydratedPhotos.length,
     momentCount: hydratedMoments.length,
     groupedPhotoCount: hydratedMoments.reduce((total, moment) => total + Math.max(0, moment.photoIds.length - 1), 0),
@@ -166,8 +174,8 @@ export const listMine = query({
         : "draft" as const;
       return {
         _id: trip._id,
-        title: trip.title,
-        destination: trip.destination ?? trip.title,
+        title: journeyTitle(trip.title),
+        destination: trip.destination ?? journeyTitle(trip.title),
         startDate: trip.startDate,
         endDate: trip.endDate,
         published: trip.published,
@@ -176,7 +184,7 @@ export const listMine = query({
         updatedAt: trip.updatedAt,
         photoCount,
         status,
-        coverUrl: cover ? await ctx.storage.getUrl(cover.thumbnailStorageId ?? cover.storageId) : null,
+        coverUrl: cover ? await photoRoleUrl(ctx, cover.thumbnailStorageId ?? cover.storageId) : null,
       };
     }));
   },
@@ -201,13 +209,13 @@ export const listSharedWithMe = query({
       const cover = sortedPhotos.find((photo) => photo._id === trip.coverPhotoId) ?? sortedPhotos[0];
       shared.push({
         _id: trip._id,
-        title: trip.title,
-        destination: trip.destination ?? trip.title,
+        title: journeyTitle(trip.title),
+        destination: trip.destination ?? journeyTitle(trip.title),
         startDate: trip.startDate,
         endDate: trip.endDate,
         shareToken: link.token,
         lastViewedAt: record.lastViewedAt,
-        coverUrl: cover ? await ctx.storage.getUrl(cover.thumbnailStorageId ?? cover.storageId) : null,
+        coverUrl: cover ? await photoRoleUrl(ctx, cover.thumbnailStorageId ?? cover.storageId) : null,
       });
     }
     return shared;
@@ -225,13 +233,19 @@ export const getPhotoCopies = query({
     const photo = await ctx.db.get(photoId);
     if (!photo) return null;
     await requireOwnedTrip(ctx, photo.tripId);
+    if (photo.storageLayout === SINGLE_OPTIMIZED_STORAGE) {
+      return {
+        storageLayout: SINGLE_OPTIMIZED_STORAGE,
+        savedImageUrl: await photoRoleUrl(ctx, photo.storageId),
+      };
+    }
     const [originalUrl, thumbnailUrl, displayUrl, largeUrl] = await Promise.all([
-      ctx.storage.getUrl(photo.storageId),
-      ctx.storage.getUrl(photo.thumbnailStorageId ?? photo.storageId),
-      ctx.storage.getUrl(photo.displayStorageId ?? photo.storageId),
-      ctx.storage.getUrl(photo.largeStorageId ?? photo.storageId),
+      photoRoleUrl(ctx, photo.storageId),
+      photoRoleUrl(ctx, photo.thumbnailStorageId ?? photo.storageId),
+      photoRoleUrl(ctx, photo.displayStorageId ?? photo.storageId),
+      photoRoleUrl(ctx, photo.largeStorageId ?? photo.storageId),
     ]);
-    return { originalUrl, thumbnailUrl, displayUrl, largeUrl };
+    return { storageLayout: "legacy" as const, originalUrl, thumbnailUrl, displayUrl, largeUrl };
   },
 });
 
@@ -255,7 +269,7 @@ export const create = mutation({
       ownerId: userId,
       creationRequestId,
       destination: cleanDestination,
-      title: cleanDestination,
+      title: journeyTitle(cleanDestination),
       titleSource: "default",
       published: false,
       processingStatus: "selecting",
@@ -273,8 +287,7 @@ export const updateTitle = mutation({
   args: { tripId: v.id("trips"), title: v.string() },
   handler: async (ctx, { tripId, title }) => {
     await requireOwnedTrip(ctx, tripId);
-    const cleanTitle = title.trim();
-    if (!cleanTitle) throw new ConvexError("Give this trip a name.");
+    const cleanTitle = journeyTitle(title);
     if (cleanTitle.length > MAX_TITLE_LENGTH) throw new ConvexError(`Keep the journey title under ${MAX_TITLE_LENGTH} characters.`);
     await ctx.db.patch(tripId, { title: cleanTitle, titleSource: "user", updatedAt: Date.now() });
   },
@@ -343,8 +356,8 @@ export const listDeleted = query({
     const trips = await ctx.db.query("trips").withIndex("by_owner", (q) => q.eq("ownerId", userId)).collect();
     return trips.filter((trip) => trip.deletedAt !== undefined).sort((a, b) => (b.deletedAt ?? 0) - (a.deletedAt ?? 0)).map((trip) => ({
       _id: trip._id,
-      title: trip.title,
-      destination: trip.destination ?? trip.title,
+      title: journeyTitle(trip.title),
+      destination: trip.destination ?? journeyTitle(trip.title),
       deletedAt: trip.deletedAt!,
       purgeAt: trip.purgeAt!,
     }));
@@ -372,8 +385,7 @@ async function eraseTrip(ctx: MutationCtx, tripId: Id<"trips">) {
       ctx.db.query("uploadItems").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
     ]);
     for (const photo of photos) {
-      const storageIds = new Set([photo.storageId, photo.thumbnailStorageId, photo.displayStorageId, photo.largeStorageId].filter((id): id is Id<"_storage"> => id !== undefined));
-      for (const storageId of storageIds) await ctx.storage.delete(storageId);
+      for (const storageId of durablePhotoStorageIds(photo)) await ctx.storage.delete(storageId);
       await ctx.db.delete(photo._id);
     }
     for (const record of [...days, ...stops, ...moments, ...links, ...accessRecords, ...uploadItems]) await ctx.db.delete(record._id);
@@ -446,8 +458,8 @@ export const beginUpload = mutation({
     const duplicate = uniqueNew.find((item) => uploadedSignatures.has(`${item.fileName}:${item.fileSize}`));
     if (duplicate) throw new ConvexError(`${duplicate.fileName} is already uploaded to this journey.`);
     if (Math.max(current.length, storedPhotos.length) + uniqueNew.length > MAX_PHOTOS) throw new ConvexError(`A journey can hold up to ${MAX_PHOTOS} photos.`);
-    const invalid = uniqueNew.find((item) => !SUPPORTED_PHOTO_TYPES.has(item.fileType));
-    if (invalid) throw new ConvexError(`${invalid.fileName} is not a supported JPEG, PNG, or WebP photo. HEIC and HEIF are not supported in V1.`);
+    const invalid = uniqueNew.find((item) => !SUPPORTED_SOURCE_PHOTO_TYPES.has(item.fileType));
+    if (invalid) throw new ConvexError(`${invalid.fileName} is not a supported JPEG, PNG, WebP, HEIC, or HEIF photo.`);
     const oversized = uniqueNew.find((item) => item.fileSize > MAX_FILE_SIZE);
     if (oversized) throw new ConvexError(`${oversized.fileName} is larger than 50 MB.`);
     for (const item of uniqueNew) {
@@ -520,9 +532,6 @@ export const addPhoto = mutation({
     tripId: v.id("trips"),
     uploadKey: v.string(),
     storageId: v.id("_storage"),
-    thumbnailStorageId: v.id("_storage"),
-    displayStorageId: v.id("_storage"),
-    largeStorageId: v.id("_storage"),
     fileName: v.string(),
     order: v.number(),
     ...photoMetadataArgs,
@@ -532,26 +541,22 @@ export const addPhoto = mutation({
     const uploadItem = await ctx.db.query("uploadItems").withIndex("by_trip_key", (q) => q.eq("tripId", args.tripId).eq("uploadKey", args.uploadKey)).unique();
     if (!uploadItem) throw new ConvexError("This upload item was not prepared.");
     if (uploadItem.photoId) {
-      await Promise.all([
-        ctx.storage.delete(args.storageId),
-        ctx.storage.delete(args.thumbnailStorageId),
-        ctx.storage.delete(args.displayStorageId),
-        ctx.storage.delete(args.largeStorageId),
-      ]);
+      const existingPhoto = await ctx.db.get(uploadItem.photoId);
+      if (existingPhoto?.storageId !== args.storageId && await ctx.db.system.get(args.storageId)) await ctx.storage.delete(args.storageId);
       return uploadItem.photoId;
     }
     const photos = await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", args.tripId)).collect();
-    if (photos.length >= MAX_PHOTOS || args.order < 0 || args.order >= MAX_PHOTOS || args.fileSize > MAX_FILE_SIZE || !SUPPORTED_PHOTO_TYPES.has(args.fileType)) {
-      await Promise.all([
-        ctx.storage.delete(args.storageId),
-        ctx.storage.delete(args.thumbnailStorageId),
-        ctx.storage.delete(args.displayStorageId),
-        ctx.storage.delete(args.largeStorageId),
-      ]);
+    const storedImage = await ctx.db.system.get(args.storageId);
+    const invalidSource = !SUPPORTED_SOURCE_PHOTO_TYPES.has(args.fileType);
+    const invalidStoredImage = !storedImage || storedImage.contentType !== "image/webp" || storedImage.size <= 0 || storedImage.size > MAX_OPTIMIZED_FILE_SIZE;
+    if (photos.length >= MAX_PHOTOS || args.order < 0 || args.order >= MAX_PHOTOS || args.fileSize > MAX_FILE_SIZE || invalidSource || invalidStoredImage) {
+      if (storedImage) await ctx.storage.delete(args.storageId);
       throw new ConvexError(args.fileSize > MAX_FILE_SIZE
         ? "This photo is larger than 50 MB."
-        : !SUPPORTED_PHOTO_TYPES.has(args.fileType)
-          ? "This photo is not a supported JPEG, PNG, or WebP image."
+        : invalidSource
+          ? "This photo is not a supported JPEG, PNG, WebP, HEIC, or HEIF image."
+          : invalidStoredImage
+            ? "The prepared photo was not a valid WebP image."
           : `A trip can hold up to ${MAX_PHOTOS} photos.`);
     }
     const reviewState = initialPhotoReviewState({
@@ -563,6 +568,7 @@ export const addPhoto = mutation({
     const placementConfidence = args.hasDateMetadata && args.hasGpsMetadata ? "high" as const : args.hasDateMetadata ? "medium" as const : "low" as const;
     const photoId = await ctx.db.insert("photos", {
       ...args,
+      storageLayout: SINGLE_OPTIMIZED_STORAGE,
       fileName: args.fileName.slice(0, 160),
       reviewState,
       placementConfidence,
@@ -572,6 +578,32 @@ export const addPhoto = mutation({
     await ctx.db.patch(trip._id, { photoCount: photos.length + 1, processedPhotoCount: photos.length + 1, updatedAt: Date.now() });
     if (!trip.coverPhotoId && reviewState === "included") await ctx.db.patch(trip._id, { coverPhotoId: photoId, updatedAt: Date.now() });
     return photoId;
+  },
+});
+
+export const reconcileSingleImageUpload = mutation({
+  args: {
+    tripId: v.id("trips"),
+    uploadKey: v.string(),
+    storageId: v.id("_storage"),
+    error: v.string(),
+  },
+  handler: async (ctx, { tripId, uploadKey, storageId, error }) => {
+    await requireOwnedTrip(ctx, tripId);
+    const item = await ctx.db.query("uploadItems").withIndex("by_trip_key", (q) => q.eq("tripId", tripId).eq("uploadKey", uploadKey)).unique();
+    if (!item) {
+      if (await ctx.db.system.get(storageId)) await ctx.storage.delete(storageId);
+      return { saved: false as const };
+    }
+    if (item.photoId) {
+      const photo = await ctx.db.get(item.photoId);
+      if (photo?.storageId !== storageId && await ctx.db.system.get(storageId)) await ctx.storage.delete(storageId);
+      await ctx.db.patch(item._id, { status: "uploaded", error: undefined, updatedAt: Date.now() });
+      return { saved: true as const, photoId: item.photoId };
+    }
+    if (await ctx.db.system.get(storageId)) await ctx.storage.delete(storageId);
+    await ctx.db.patch(item._id, { status: "failed", error: error.slice(0, 240), updatedAt: Date.now() });
+    return { saved: false as const };
   },
 });
 
@@ -869,7 +901,7 @@ export const readyEmailDetails = internalQuery({
   handler: async (ctx, { tripId, ownerId }) => {
     const [trip, owner] = await Promise.all([ctx.db.get(tripId), ctx.db.get(ownerId)]);
     if (!trip || trip.ownerId !== ownerId || trip.deletedAt !== undefined || !owner?.email) return null;
-    return { title: trip.title, destination: trip.destination ?? trip.title, email: owner.email, sentAt: trip.readyEmailSentAt, attempts: trip.readyEmailAttempts ?? 0 };
+    return { title: journeyTitle(trip.title), destination: trip.destination ?? journeyTitle(trip.title), email: owner.email, sentAt: trip.readyEmailSentAt, attempts: trip.readyEmailAttempts ?? 0 };
   },
 });
 
@@ -893,7 +925,7 @@ async function sendWithResend({ to, title, destination, journeyUrl, idempotencyK
   if (!apiKey) throw new Error("RESEND_API_KEY is not configured.");
   const testing = process.env.RESEND_TEST_MODE !== "false";
   const recipient = testing ? "delivered+trip-ready@resend.dev" : to;
-  const from = testing ? "Triplog <onboarding@resend.dev>" : process.env.RESEND_FROM_EMAIL?.trim();
+  const from = testing ? "Postcard <onboarding@resend.dev>" : process.env.RESEND_FROM_EMAIL?.trim();
   if (!from) throw new Error("RESEND_FROM_EMAIL is required when RESEND_TEST_MODE is false.");
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -903,7 +935,7 @@ async function sendWithResend({ to, title, destination, journeyUrl, idempotencyK
       to: [recipient],
       subject: `${title} is ready to revisit`,
       text: `Your first draft for ${destination} is ready. Open it: ${journeyUrl}`,
-      html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:40px 24px;color:#1d1e1b"><p style="color:#a8563c;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Triplog · Journey ready</p><h1 style="font-family:Georgia,serif;font-weight:500;font-size:42px;line-height:1.05">${safeHtml(title)} is ready.</h1><p style="font-size:17px;line-height:1.6">Your photographs from ${safeHtml(destination)} have been organised into a private first draft. Triplog has not invented any memories or opinions.</p><p><a href="${safeHtml(journeyUrl)}" style="display:inline-block;background:#244336;color:#fff;padding:14px 20px;text-decoration:none">Open your journey</a></p></div>`,
+      html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;padding:40px 24px;color:#1d1e1b"><p style="color:#a8563c;font-size:12px;letter-spacing:.12em;text-transform:uppercase">Postcard · Journey ready</p><h1 style="font-family:Georgia,serif;font-weight:500;font-size:42px;line-height:1.05">${safeHtml(title)} is ready.</h1><p style="font-size:17px;line-height:1.6">Your photographs from ${safeHtml(destination)} have been organised into a private first draft. Postcard has not invented any memories or opinions.</p><p><a href="${safeHtml(journeyUrl)}" style="display:inline-block;background:#244336;color:#fff;padding:14px 20px;text-decoration:none">Open your journey</a></p></div>`,
     }),
   });
   const result = await response.json() as { id?: string; message?: string };
@@ -1157,8 +1189,7 @@ export const confirmTitleAndCover = mutation({
     await requireOwnedTrip(ctx, tripId);
     const photo = await ctx.db.get(coverPhotoId);
     if (!photo || photo.tripId !== tripId || (photo.reviewState ?? "included") !== "included") throw new ConvexError("Choose an included photo for the cover.");
-    const cleanTitle = title.trim();
-    if (!cleanTitle) throw new ConvexError("Give this journey a title.");
+    const cleanTitle = journeyTitle(title);
     if (cleanTitle.length > MAX_TITLE_LENGTH) throw new ConvexError(`Keep the journey title under ${MAX_TITLE_LENGTH} characters.`);
     await ctx.db.patch(tripId, { title: cleanTitle, titleSource: "user", titleConfirmed: true, coverPhotoId, coverConfirmed: true, completionLevel: "usable", updatedAt: Date.now() });
   },
@@ -1261,18 +1292,20 @@ export const resolvePlaces = action({
 });
 
 export const publish = mutation({
-  args: { tripId: v.id("trips") },
-  handler: async (ctx, { tripId }) => {
+  args: { tripId: v.id("trips"), title: v.optional(v.string()) },
+  handler: async (ctx, { tripId, title }) => {
     const trip = await requireOwnedTrip(ctx, tripId);
-    const [photo, days, moments, existingLinks] = await Promise.all([
+    const [photo, cover, days, moments, existingLinks] = await Promise.all([
       ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", tripId)).first(),
+      trip.coverPhotoId ? ctx.db.get(trip.coverPhotoId) : Promise.resolve(null),
       ctx.db.query("days").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
       ctx.db.query("moments").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
       ctx.db.query("shareLinks").withIndex("by_trip", (q) => q.eq("tripId", tripId)).collect(),
     ]);
     if (!trip.destination?.trim() || trip.startDate === undefined || trip.endDate === undefined) throw new ConvexError("Confirm the destination and trip dates before sharing.");
-    if (!trip.titleConfirmed) throw new ConvexError("Confirm the journey title before sharing.");
-    if (!trip.coverConfirmed || !trip.coverPhotoId) throw new ConvexError("Confirm the cover photograph before sharing.");
+    const cleanTitle = journeyTitle(title ?? trip.title);
+    if (cleanTitle.length > MAX_TITLE_LENGTH) throw new ConvexError(`Keep the journey title under ${MAX_TITLE_LENGTH} characters.`);
+    if (!cover || cover.tripId !== tripId || (cover.reviewState ?? "included") !== "included") throw new ConvexError("Choose a usable cover photograph before sharing.");
     if (!trip.recipientPreviewedAt) throw new ConvexError("Preview the recipient experience before sharing.");
     if (photo === null || days.length === 0 || moments.length === 0) throw new ConvexError("Finish reconstructing this journey before sharing.");
     if (trip.published && trip.shareToken) {
@@ -1285,7 +1318,7 @@ export const publish = mutation({
     }
     const shareToken = crypto.randomUUID();
     await ctx.db.insert("shareLinks", { tripId, token: shareToken, createdAt: now });
-    await ctx.db.patch(tripId, { published: true, shareToken, processingStatus: "ready", updatedAt: now });
+    await ctx.db.patch(tripId, { title: cleanTitle, published: true, shareToken, processingStatus: "ready", updatedAt: now });
     return shareToken;
   },
 });
@@ -1344,8 +1377,8 @@ export const getShared = query({
       })),
     });
     return {
-      title: trip.title,
-      destination: trip.destination ?? trip.title,
+      title: journeyTitle(trip.title),
+      destination: trip.destination ?? journeyTitle(trip.title),
       startDate: trip.startDate,
       endDate: trip.endDate,
       photoCount: trip.photoCount,
@@ -1391,12 +1424,12 @@ export const getSharePreview = query({
     const owner = await ctx.db.get(trip.ownerId);
     const cover = trip.coverPhotoId ? await ctx.db.get(trip.coverPhotoId) : null;
     return {
-      creatorName: owner?.name?.trim() || "A Triplog traveller",
-      destination: trip.destination ?? trip.title,
-      title: trip.title,
+      creatorName: owner?.name?.trim() || "A Postcard traveller",
+      destination: trip.destination ?? journeyTitle(trip.title),
+      title: journeyTitle(trip.title),
       startDate: trip.startDate,
       endDate: trip.endDate,
-      coverUrl: cover ? await ctx.storage.getUrl(cover.displayStorageId ?? cover.storageId) : null,
+      coverUrl: cover ? await photoRoleUrl(ctx, cover.displayStorageId ?? cover.storageId) : null,
     };
   },
 });

@@ -5,8 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { createPhotoVariants, readPhotoMetadata } from "@/lib/photo-metadata";
-import { createTaskLimiter, photoFileError } from "@/lib/photo-upload";
+import { createOptimizedPhoto, readPhotoMetadata } from "@/lib/photo-metadata";
+import { canonicalPhotoMimeType, createTaskLimiter, photoFileError } from "@/lib/photo-upload";
 import { MAX_PHOTOS } from "@/lib/trip";
 
 type LocalStatus = "ready" | "preparing" | "uploading" | "saved" | "failed";
@@ -56,6 +56,7 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
   const markUploadAttempt = useMutation(api.trips.markUploadAttempt);
   const markUploadFailed = useMutation(api.trips.markUploadFailed);
   const addPhoto = useMutation(api.trips.addPhoto);
+  const reconcileSingleImageUpload = useMutation(api.trips.reconcileSingleImageUpload);
   const queueProcessing = useMutation(api.trips.queueProcessing);
   const [selected, setSelected] = useState<SelectedPhoto[]>([]);
   const [notice, setNotice] = useState("");
@@ -78,7 +79,7 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
 
   function addFiles(files: File[]) {
     if (uploadItems === undefined) {
-      setNotice("Triplog is still checking the photographs already saved. Try selecting them again in a moment.");
+      setNotice("Postcard is still checking the photographs already saved. Try selecting them again in a moment.");
       return { accepted: 0, rejected: files.length };
     }
     setError("");
@@ -153,7 +154,7 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
       const reservations = candidates.map((photo, index) => ({
         uploadKey: photo.key,
         fileName: photo.file.name,
-        fileType: photo.file.type,
+        fileType: canonicalPhotoMimeType(photo.file)!,
         fileSize: photo.file.size,
         order: persistedByKey.get(photo.key)?.order ?? firstNewOrder + index,
       }));
@@ -183,34 +184,41 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
       while (nextIndex < candidates.length) {
         const index = nextIndex++;
         const photo = candidates[index];
+        let uploadedStorageId: Id<"_storage"> | undefined;
         try {
           await markUploadAttempt({ tripId: existingTripId, uploadKey: photo.key });
-          const { metadata, variants } = await preparePhoto(async () => {
+          const { metadata, optimized } = await preparePhoto(async () => {
             updateLocal(photo.key, { status: "preparing", error: undefined });
             await waitForVisiblePaint();
             const metadata = await readPhotoMetadata(photo.file);
-            const variants = await createPhotoVariants(photo.file);
-            return { metadata, variants };
+            const optimized = await createOptimizedPhoto(photo.file);
+            return { metadata, optimized };
           });
           updateLocal(photo.key, { status: "uploading" });
           setBatchProgress((current) => current ? { ...current, stage: "uploading" } : current);
-          const urls = await Promise.all(Array.from({ length: 4 }, () => generateUploadUrl({ tripId: existingTripId })));
-          const [storageId, thumbnailStorageId, displayStorageId, largeStorageId] = await Promise.all([
-            uploadBlob(() => storeBlob(urls[0], photo.file)),
-            uploadBlob(() => storeBlob(urls[1], variants.thumbnail)),
-            uploadBlob(() => storeBlob(urls[2], variants.display)),
-            uploadBlob(() => storeBlob(urls[3], variants.large)),
-          ]);
-          await addPhoto({ tripId: existingTripId, uploadKey: photo.key, storageId, thumbnailStorageId, displayStorageId, largeStorageId, fileName: photo.file.name, order: persistedByKey.get(photo.key)?.order ?? firstNewOrder + index, ...metadata });
+          const uploadUrl = await generateUploadUrl({ tripId: existingTripId });
+          uploadedStorageId = await uploadBlob(() => storeBlob(uploadUrl, optimized.blob));
+          await addPhoto({ tripId: existingTripId, uploadKey: photo.key, storageId: uploadedStorageId, fileName: photo.file.name, order: persistedByKey.get(photo.key)?.order ?? firstNewOrder + index, ...metadata });
           saved += 1;
           updateLocal(photo.key, { status: "saved" });
           finishPhoto(false);
         } catch (caught) {
-          failures += 1;
           const message = caught instanceof Error && caught.message ? caught.message : "This photo could not be saved.";
+          let failureRecorded = false;
+          if (uploadedStorageId) {
+            const reconciliation = await reconcileSingleImageUpload({ tripId: existingTripId, uploadKey: photo.key, storageId: uploadedStorageId, error: message }).catch(() => undefined);
+            failureRecorded = reconciliation !== undefined;
+            if (reconciliation?.saved) {
+              saved += 1;
+              updateLocal(photo.key, { status: "saved", error: undefined });
+              finishPhoto(false);
+              continue;
+            }
+          }
+          failures += 1;
           updateLocal(photo.key, { status: "failed", error: message });
           finishPhoto(true);
-          await markUploadFailed({ tripId: existingTripId, uploadKey: photo.key, error: message }).catch(() => undefined);
+          if (!failureRecorded) await markUploadFailed({ tripId: existingTripId, uploadKey: photo.key, error: message }).catch(() => undefined);
         }
       }
     }
@@ -226,7 +234,7 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
         uploadLock.current = false;
       }
       catch {
-        setError("Your originals are safe, but Triplog could not queue the draft. Try again when the connection is stable.");
+        setError("Your saved photos are safe, but Postcard could not queue the draft. Try again when the connection is stable.");
         setUploading(false);
         uploadLock.current = false;
       }
@@ -248,10 +256,10 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
 
   return (
     <main className="onboarding-shell core-product">
-      <header className="onboarding-header"><p className="wordmark">Triplog</p><p><span className="status-dot" />Private to you</p>{onCancel ? <button className="text-button" type="button" onClick={onCancel}>Back to journey</button> : null}</header>
+      <header className="onboarding-header"><p className="wordmark">Postcard</p><p><span className="status-dot" />Private to you</p>{onCancel ? <button className="text-button" type="button" onClick={onCancel}>Back to journey</button> : null}</header>
       <section className="onboarding-intro" aria-labelledby="onboarding-title">
         <p className="eyebrow">{existingPhotoCount ? `${existingPhotoCount} already saved` : "Start with what you already have"}</p><h1 id="onboarding-title">{existingPhotoCount ? "Add only the new photographs." : "Choose the photographs from this trip."}</h1>
-        <p>Triplog saves the unchanged original and makes three smaller viewing copies. It is not a replacement for your phone or cloud backup.</p>
+        <p>Postcard reads the original on this device, then saves one web-ready copy for your journey. Keep your originals in your phone or cloud backup.</p>
       </section>
       <section className="selection-workspace" aria-label="Choose trip photographs">
         <label className="photo-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
@@ -265,7 +273,7 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
         </div>
         {(uploadItems?.length ?? 0) > 0 ? <progress className="real-progress" max={uploadItems!.length} value={uploadedCount}>{uploadedCount} of {uploadItems!.length}</progress> : null}
         {unfinished.length ? (
-          <section className="unfinished-uploads"><p className="eyebrow">Still needs this device</p><h2>Reselect unfinished photos to continue them.</h2><p>Successfully uploaded photos will be skipped. Choose the same files again and Triplog will match them by name, size, and last changed time.</p>
+          <section className="unfinished-uploads"><p className="eyebrow">Still needs this device</p><h2>Reselect unfinished photos to continue them.</h2><p>Successfully uploaded photos will be skipped. Choose the same files again and Postcard will match them by name, size, and last changed time.</p>
             <ul>{unfinished.slice(0, 12).map((item) => <li key={item._id}><span>{item.fileName}</span><strong>{item.status === "failed" ? "Failed — retry" : "Unfinished"}</strong>{item.error ? <small>{item.error}</small> : null}</li>)}</ul>
             {unfinished.length > 12 ? <p>And {unfinished.length - 12} more unfinished photos.</p> : null}</section>
         ) : null}

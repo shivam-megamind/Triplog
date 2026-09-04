@@ -152,7 +152,7 @@ export function JourneysHome({
   }
 
   async function erase(tripId: Id<"trips">, title: string) {
-    if (!window.confirm(`Permanently delete “${title}”? This erases originals, viewing copies, memories, and sharing access. It cannot be undone.`)) return;
+    if (!window.confirm(`Permanently delete “${title}”? This erases its saved photo files, memories, and sharing access. It cannot be undone.`)) return;
     setBusy(true);
     try { await permanentlyDeleteTrip({ tripId }); }
     finally { setBusy(false); }
@@ -161,7 +161,7 @@ export function JourneysHome({
   return (
     <main className="journeys-home core-product">
       <header className="journeys-home-header">
-        <p className="wordmark">Triplog</p>
+        <p className="wordmark">Postcard</p>
         <button className="text-button" onClick={onSignOut}>Sign out</button>
       </header>
       <section className="journeys-home-intro" aria-labelledby="journeys-title">
@@ -280,7 +280,7 @@ export function JourneysHome({
             <div className="journey-empty-state">
               <p className="eyebrow">Shared with me</p>
               <h2>No journeys have been shared with this account.</h2>
-              <p>When you open an active Triplog link while signed in, it will appear here for later.</p>
+              <p>When you open an active Postcard link while signed in, it will appear here for later.</p>
             </div>
           )}
         </section>

@@ -100,7 +100,7 @@ export function TripEditor() {
         onCancel={() => { if (trip.photoCount) setManagingPhotos(false); else setSelectedId(null); }}
         initialError={trip.processingStatus === "error"
           ? trip.photoCount > 0
-            ? "Triplog could not finish the first draft. Your saved photographs are safe; continue reconstruction to try again."
+            ? "Postcard could not finish the first draft. Your saved photographs are safe; continue reconstruction to try again."
             : "The previous upload could not save its first photograph. Choose the trip photos again to restart safely."
           : undefined}
       />
@@ -113,7 +113,7 @@ export function TripEditor() {
         <section className="processing-card" aria-live="polite">
           <p className="timeline-label">Reconstructing your timeline</p>
           <h1>{trip.title}</h1>
-          <p>Triplog is organising {trip.photoCount} saved photo{trip.photoCount === 1 ? "" : "s"} into dates, stops, and moments.</p>
+          <p>Postcard is organising {trip.photoCount} saved photo{trip.photoCount === 1 ? "" : "s"} into dates, stops, and moments.</p>
           <progress max={Math.max(1, trip.photoCount)} value={Math.min(trip.processedPhotoCount ?? 0, trip.photoCount)}>{trip.processedPhotoCount ?? 0} of {trip.photoCount}</progress>
           <p>This page will open the timeline automatically when reconstruction is ready. Your saved photos will not be uploaded again.</p>
           {retryError ? <p className="form-error" role="alert">{retryError}</p> : null}
@@ -132,7 +132,7 @@ export function TripEditor() {
         <section className="processing-card" aria-live="polite">
           <p className="timeline-label">Reconstruction stopped</p>
           <h1>{trip.title}</h1>
-          <p>Triplog could not finish this timeline. All {trip.photoCount} saved photo{trip.photoCount === 1 ? " is" : "s are"} still safe.</p>
+          <p>Postcard could not finish this timeline. All {trip.photoCount} saved photo{trip.photoCount === 1 ? " is" : "s are"} still safe.</p>
           {retryError ? <p className="form-error" role="alert">{retryError}</p> : null}
           <div className="processing-actions">
             <button className="primary-button" type="button" disabled={retrying} onClick={() => void retryReconstruction(trip._id)}>{retrying ? "Restarting…" : "Retry reconstruction"}</button>

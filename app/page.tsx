@@ -16,7 +16,7 @@ export default function Home() {
         />
         <div className={styles.heroShade} />
         <header className={styles.heroHeader}>
-          <p className={styles.wordmark}>Triplog</p>
+          <p className={styles.wordmark}>Postcard</p>
           <div className={styles.heroNav}>
             <p className={styles.headerNote}>Built from your photos. Told in your voice.</p>
             <LandingAuthAction className={styles.signIn} mode="signIn" authenticatedLabel="Your journeys" respondToRedirect>Sign in</LandingAuthAction>
@@ -27,13 +27,13 @@ export default function Home() {
           <p className={styles.kicker}>Your private travel book</p>
           <h1 id="hero-title">Your trip happened. Don&apos;t let it disappear into your camera roll.</h1>
           <p className={styles.heroSupporting}>
-            Drop in the photos from one trip. Triplog reconstructs the days, places, and moments—then gives you a beautiful travel book to make your own.
+            Drop in the photos from one trip. Postcard reconstructs the days, places, and moments—then gives you a beautiful travel book to make your own.
           </p>
           <p className={styles.trust}>Private by default. You choose what to keep, edit, and share.</p>
           <LandingAuthAction className={styles.cta} mode="signUp">Turn a trip into a book</LandingAuthAction>
         </div>
 
-        <div className={styles.heroBook} aria-label="Example Triplog travel book page">
+        <div className={styles.heroBook} aria-label="Example Postcard travel book page">
           <div className={styles.heroBookPhoto}>
             <Image
               src="/images/coast.jpg"
@@ -55,7 +55,7 @@ export default function Home() {
         <div className={styles.sectionCopy}>
           <p className={styles.sectionNumber}>01 · Reconstruct</p>
           <h2 id="reconstruction-title">From scattered photos to the story you actually lived.</h2>
-          <p>Your camera roll already holds the clues. Triplog groups your memories into a journey by day and place, ready for you to revisit.</p>
+          <p>Your camera roll already holds the clues. Postcard groups your memories into a journey by day and place, ready for you to revisit.</p>
         </div>
 
         <div className={styles.reconstructionVisual} aria-label="Photos becoming a day-by-day journey and finished book">
@@ -75,7 +75,7 @@ export default function Home() {
           <div className={styles.storyPath} aria-hidden="true"><span>→</span></div>
 
           <div className={styles.timelinePreview}>
-            <p className={styles.visualLabel}>Triplog&apos;s first draft</p>
+            <p className={styles.visualLabel}>Postcard&apos;s first draft</p>
             <div className={styles.timelineDay}>
               <span>01</span>
               <div><strong>Arrival</strong><small>2 places · 18 photos</small></div>
@@ -96,7 +96,7 @@ export default function Home() {
             <p className={styles.visualLabel}>Your travel book</p>
             <div className={styles.miniBookSpread}>
               <div className={styles.miniBookImage}>
-                <Image src="/images/rice-terraces.jpg" alt="Bali temple presented in a finished Triplog page" fill sizes="220px" />
+                <Image src="/images/rice-terraces.jpg" alt="Bali temple presented in a finished Postcard page" fill sizes="220px" />
               </div>
               <div className={styles.miniBookCopy}>
                 <small>Day 03</small>
@@ -139,9 +139,9 @@ export default function Home() {
           <p>Share the parts you want. Give someone more than a list of places—give them the route, the context, and the honest advice behind it.</p>
         </div>
 
-        <div className={styles.sharedGuide} aria-label="Read-only shared Triplog preview">
+        <div className={styles.sharedGuide} aria-label="Read-only shared Postcard preview">
           <div className={styles.guideBar}>
-            <p>Triplog</p>
+            <p>Postcard</p>
             <span>Shared read-only</span>
           </div>
           <div className={styles.guideHero}>

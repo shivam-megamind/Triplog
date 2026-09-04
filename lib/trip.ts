@@ -1,6 +1,7 @@
 export const MAX_PHOTOS = 100;
 export const MAX_DESTINATION_LENGTH = 160;
 export const MAX_TITLE_LENGTH = 160;
+export const DEFAULT_JOURNEY_TITLE = "My Journey";
 export const MAX_LOCATION_LENGTH = 160;
 export const MAX_ENRICHMENT_LENGTH = 20_000;
 export const PROCESSING_LEASE_MS = 15 * 60 * 1000;
@@ -55,19 +56,20 @@ export type ChapterFields = {
   startDate?: number;
   endDate?: number;
   title: string;
-  titleConfirmed?: boolean;
-  coverConfirmed?: boolean;
+  coverPhotoId?: string;
   recipientPreviewedAt?: number;
   photoCount: number;
   days: Array<{ displayDate: string; place: string; memory?: string }>;
   moments?: Array<{ memory: string; recommendation: string; warning: string; detail: string }>;
 };
 
+export function journeyTitle(title?: string | null): string {
+  return title?.trim() || DEFAULT_JOURNEY_TITLE;
+}
+
 export function chapterProblem(fields: ChapterFields): string | null {
   if (!fields.destination?.trim() || fields.startDate === undefined || fields.endDate === undefined) return "Confirm the destination and trip dates.";
-  if (!fields.title.trim() || fields.title.trim() === "Untitled journey") return "Give this trip a name.";
-  if (!fields.titleConfirmed) return "Confirm the journey title.";
-  if (!fields.coverConfirmed) return "Confirm the cover photograph.";
+  if (!fields.coverPhotoId) return "Choose a usable cover photograph.";
   if (fields.photoCount < 1) return "Add at least one photo.";
   if (fields.days.length < 1) return "Confirm at least one day.";
   if (!fields.recipientPreviewedAt) return "Preview the recipient experience before sharing.";

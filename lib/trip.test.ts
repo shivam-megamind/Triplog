@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
+import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, journeyTitle, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
 import { groupPhotosIntoMoments, groupedPhotoCount, reconstructTravelTimeline, visualHashDistance } from "./reconstruction.ts";
 import { shouldOfferLocationSuggestion, suggestJourneyTitle } from "./title-suggestion.ts";
-import { createTaskLimiter, photoFileError, photoFormat } from "./photo-upload.ts";
+import { canonicalPhotoMimeType, createTaskLimiter, photoFileError, photoFormat } from "./photo-upload.ts";
+import { durablePhotoStorageIds, photoDeliveryUrl, photoStorageLayout, SINGLE_OPTIMIZED_STORAGE } from "./photo-storage.ts";
 import { createJourneyMapScene, spreadJourneyMapPoints } from "./journey-map.ts";
 
 const fileDetails = (name: string, type: string, size = 1024) => ({ name, type, size });
@@ -14,6 +15,39 @@ test("photo intake accepts supported still-image formats, including iPhone HEIC"
   assert.equal(photoFormat(fileDetails("coast.webp", "image/webp")), "webp");
   assert.equal(photoFormat(fileDetails("IMG_1234.HEIC", "image/heic")), "heic");
   assert.equal(photoFormat(fileDetails("IMG_1234.HEIF", "")), "heif");
+});
+
+test("photo intake normalizes source MIME types before reserving an upload", () => {
+  assert.equal(canonicalPhotoMimeType(fileDetails("coast.JPG", "image/pjpeg")), "image/jpeg");
+  assert.equal(canonicalPhotoMimeType(fileDetails("IMG_1234.HEIC", "")), "image/heic");
+  assert.equal(canonicalPhotoMimeType(fileDetails("clip.mov", "video/quicktime")), undefined);
+});
+
+test("undefined storage layout remains legacy and retains every durable copy", () => {
+  const legacy = { storageId: "original", thumbnailStorageId: "thumb", displayStorageId: "display", largeStorageId: "large" };
+  assert.equal(photoStorageLayout(legacy), "legacy");
+  assert.deepEqual(durablePhotoStorageIds(legacy), ["original", "thumb", "display", "large"]);
+});
+
+test("single-image storage retains only its optimized durable file", () => {
+  const photo = { storageId: "optimized", storageLayout: SINGLE_OPTIMIZED_STORAGE };
+  assert.equal(photoStorageLayout(photo), SINGLE_OPTIMIZED_STORAGE);
+  assert.deepEqual(durablePhotoStorageIds(photo), ["optimized"]);
+});
+
+test("legacy storage deletion does not delete a shared identifier twice", () => {
+  assert.deepEqual(durablePhotoStorageIds({ storageId: "same", thumbnailStorageId: "same", displayStorageId: "display" }), ["same", "display"]);
+});
+
+test("stored photos use the Convex HTTP endpoint with their durable storage ID", () => {
+  assert.equal(
+    photoDeliveryUrl(
+      "https://aware-rook-625.eu-west-1.convex.cloud/api/storage/obsolete-path",
+      "kg27xg5j9ej7ayp0h93znr3jb98dsmfh",
+    ),
+    "https://aware-rook-625.eu-west-1.convex.site/photo?storageId=kg27xg5j9ej7ayp0h93znr3jb98dsmfh",
+  );
+  assert.equal(photoDeliveryUrl(null, "missing"), null);
 });
 
 test("photo intake rejects videos, misleading extensions, and oversized images clearly", () => {
@@ -45,12 +79,21 @@ test("the task limiter never starts more than its configured number of jobs", as
   assert.equal(peak, 2);
 });
 
-test("a confirmed reconstructed journey can be published", () => {
-  assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", titleConfirmed: true, coverConfirmed: true, recipientPreviewedAt: 3, photoCount: 2, days: [{ displayDate: "14 October 2025", place: "Gion, Kyoto" }], moments: [{ memory: "", recommendation: "", warning: "", detail: "" }] }), null);
+test("an auto-generated journey title does not need manual confirmation", () => {
+  assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", coverPhotoId: "auto-cover", recipientPreviewedAt: 3, photoCount: 2, days: [{ displayDate: "14 October 2025", place: "Gion, Kyoto" }], moments: [{ memory: "", recommendation: "", warning: "", detail: "" }] }), null);
 });
 
 test("recipient preview is required before publishing", () => {
-  assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", titleConfirmed: true, coverConfirmed: true, photoCount: 1, days: [{ displayDate: "", place: "" }], moments: [] }), "Preview the recipient experience before sharing.");
+  assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", coverPhotoId: "auto-cover", photoCount: 1, days: [{ displayDate: "", place: "" }], moments: [] }), "Preview the recipient experience before sharing.");
+});
+
+test("an empty generated journey title falls back without blocking publishing", () => {
+  assert.equal(journeyTitle("   "), "My Journey");
+  assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "", coverPhotoId: "auto-cover", recipientPreviewedAt: 3, photoCount: 2, days: [{ displayDate: "14 October 2025", place: "Gion, Kyoto" }] }), null);
+});
+
+test("publishing still requires a genuinely usable cover", () => {
+  assert.equal(chapterProblem({ destination: "Japan", startDate: 1, endDate: 2, title: "Kyoto", recipientPreviewedAt: 3, photoCount: 2, days: [{ displayDate: "14 October 2025", place: "Gion, Kyoto" }] }), "Choose a usable cover photograph.");
 });
 
 test("nearby coordinates share one cache key", () => {

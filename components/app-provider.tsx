@@ -12,11 +12,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return (
       <main className="setup-shell">
         <p className="eyebrow">Local setup needed</p>
-        <h1>Connect the book to Convex.</h1>
+        <h1>Connect Postcard to Convex.</h1>
         <p>Run <code>npx convex dev --local</code>, then restart the web app. This creates the local database address.</p>
       </main>
     );
   }
   return <ConvexAuthProvider client={client}>{children}</ConvexAuthProvider>;
 }
-

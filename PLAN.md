@@ -7,7 +7,7 @@
 
 ## Delivery rule
 
-The independent review reopened affected milestones. The current approved slice removes manual title confirmation from publishing and changes the user-facing product name to Postcard without renaming internal infrastructure. Stop for user review after validation.
+The independent review reopened affected milestones. The current approved slice keeps the landing design and actions unchanged while repositioning Postcard as a completed-trip reconstruction and shareable journey, without travel-book language. Stop for user review after validation.
 
 ## Retained boundary
 
@@ -17,15 +17,15 @@ The landing page at `/`, the signup/sign-in interface, and the flow that returns
 
 Only milestones with accepted evidence are checked. The independent review reopened milestones 3–29; code that already exists is retained and verified during its approved repair phase rather than assumed complete.
 
-- [x] 1. Landing page with Create your journey and Sign in — retained, validated, and approved.
+- [x] 1. Landing page with Build my journey and Sign in — existing design and actions retained; completed-trip reconstruction positioning validated at mobile and desktop widths.
 - [ ] 2. Account creation, sign-in, sign-out, and return to landing — the stale-build asset blocker is repaired and the server-asset regression check passes; final live browser confirmation is reopened.
 - [ ] 3. Your Journeys and Shared with me, including empty states.
 - [ ] 4. Multiple free journey drafts with correct statuses.
 - [ ] 5. Destination/date entry, validation, duplicate-tap protection, and owner correction after creation. The Phase 1 edit-and-reconstruct path is implemented; browser proof remains.
 - [ ] 6. Photo selection with supported-format checks, conditional browser-native HEIC/HEIF handling, and full rejection above the internal 100-photo safety limit. Automated checks cover format and video rejection; real iPhone proof remains.
-- [ ] 7. Per-file upload with overall progress. The original is read on the device for evidence and hashes, then one approximately 1600px WebP is uploaded. Immediate selection confirmation, bounded preparation, `Uploading X of N`, and filename-specific retry remain in place; a real interrupted iPhone upload remains open.
+- [ ] 7. Per-file upload with overall progress. The original is read on the device for evidence and hashes, then Postcard uploads one approximately 1600px WebP or one original JPEG/PNG/WebP fallback if Safari cannot prepare WebP. Immediate selection confirmation, bounded preparation, `Uploading X of N`, and filename-specific retry remain in place; a real interrupted iPhone upload remains open.
 - [ ] 8. Resume unfinished work and retry only failed photos. The stabilization browser run proves that adding one new file preserves the first file, returns to the updated timeline, and rejects reselection of the saved file; a forced network-failure browser run remains open.
-- [ ] 9. One durable optimized image for each new photo, with unchanged read/delete compatibility for legacy original, thumbnail, display, and large files.
+- [ ] 9. One durable image for each new photo, with optimized WebP preferred, a supported original fallback for Safari, and unchanged read/delete compatibility for legacy original, thumbnail, display, and large files.
 - [ ] 10. Visible date, time, GPS, and readable place evidence. Phase 1 implementation exists; real-photo browser proof remains.
 - [ ] 11. Automatic dates, multiple stops per date, chronological moments, and evidence-based stop sequence. Unit checks pass; real-photo browser proof remains.
 - [ ] 12. Duplicate/similar groups, representative suggestion, and View all.
@@ -62,7 +62,7 @@ Only milestones with accepted evidence are checked. The independent review reope
 - Convex provides authentication, database records, and photo storage.
 - OpenStreetMap Nominatim converts one representative coordinate per group into a place name; photos are never sent to it.
 - V1 uses Convex for upload recovery. Completed photos stay saved; failed or unfinished photos are retried or reselected individually. No separate resumable-upload service will be added.
-- Browser photo preparation runs one item at a time, at most two photos move through the outer queue, and at most two storage bodies transfer at once. New photos create one approximately 1600px WebP storage body each. The original is never uploaded, and legacy photos retain their old storage identifiers. A Convex HTTP endpoint reads those stored files by identifier so new and legacy image roles receive browser-safe URLs.
+- Browser photo preparation runs one item at a time, at most two photos move through the outer queue, and at most two storage bodies transfer at once. New photos create one storage body each: an approximately 1600px WebP when preparation succeeds, or the one original JPEG/PNG/WebP when it fails. Legacy photos retain their old storage identifiers. A Convex HTTP endpoint reads those stored files by identifier so new and legacy image roles receive browser-safe URLs.
 - Convex background jobs reconstruct a journey after upload, so the browser does not need to remain open.
 - Resend sends the one journey-ready email from the Convex background job. Development defaults to Resend's safe delivered test address; production delivery requires explicit sender settings.
 - Existing recovery behavior remains; Phase 1 adds no complex deletion infrastructure solely for unusually large journeys.
@@ -92,3 +92,7 @@ Only milestones with accepted evidence are checked. The independent review reope
 - 2026-09-04: Make `single_optimized_v1` the storage layout for new photos. Read metadata and duplicate evidence from the untouched source first, upload one approximately 1600px WebP, treat an absent layout as legacy, and keep every legacy read and deletion fallback.
 - 2026-09-04: Serve stored photo Blobs through the existing Convex HTTP host because the deployment's generated `/api/storage/` UUID URLs return `InvalidStoragePath`. Preserve each legacy role's own identifier, and allow region-qualified Convex hosts in Next.js image resizing.
 - 2026-09-04: Use Postcard as the user-facing product name while preserving internal Triplog identifiers. Treat generated journey titles as publishable without manual confirmation, pass the displayed title into publishing, and fall back to `My Journey` when it is empty.
+- 2026-09-05: Keep one durable file per new photo but prefer successful upload over WebP optimization on Safari. JPEG, PNG, and WebP fall back to their one original file when canvas WebP output is unavailable; HEIC/HEIF do not.
+- 2026-09-05: Do not label an active upload as unfinished while its selected source is still available on the page. Put concise format limits and the current one-copy/private-by-default trust explanation beside the picker, and close the existing journey menu before opening any selected action.
+- 2026-09-05: Serve stored journey images directly to the browser instead of through the Next.js image proxy. Keep Next Image's layout behavior but use its supported `unoptimized` mode, because the Convex endpoint already returns the correct stored type and the local server cannot reliably refetch it. Control both three-dot menus with React state so the menu and its selected editor cannot remain open together on Safari.
+- 2026-09-05: Position Postcard as reconstructing a completed trip from the traveller's own photos into a useful journey that can be shared when asked. Keep personal memory as a private-record benefit and remove travel-book framing from visible copy.

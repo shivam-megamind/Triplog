@@ -3,11 +3,31 @@ import test from "node:test";
 import { canAddPhotos, canRetryProcessing, chapterProblem, coordinateKey, dateInputTimestamp, enrichmentError, initialPhotoReviewState, isProcessingLeaseActive, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, journeyEntryView, journeyTitle, localDateKey, manualMomentKey, MAX_ENRICHMENT_LENGTH, shouldOfferReconstructionRetry, timelineAvailability, tripDetailsReprocessingPlan } from "./trip.ts";
 import { groupPhotosIntoMoments, groupedPhotoCount, reconstructTravelTimeline, visualHashDistance } from "./reconstruction.ts";
 import { shouldOfferLocationSuggestion, suggestJourneyTitle } from "./title-suggestion.ts";
-import { canonicalPhotoMimeType, createTaskLimiter, photoFileError, photoFormat } from "./photo-upload.ts";
-import { durablePhotoStorageIds, photoDeliveryUrl, photoStorageLayout, SINGLE_OPTIMIZED_STORAGE } from "./photo-storage.ts";
+import { canonicalPhotoMimeType, createTaskLimiter, originalFallbackMimeType, photoFileError, photoFormat, uploadItemNeedsSource } from "./photo-upload.ts";
+import { durablePhotoStorageIds, photoDeliveryUrl, photoStorageLayout, SINGLE_IMAGE_STORAGE, SINGLE_OPTIMIZED_STORAGE, storedPhotoValidationError } from "./photo-storage.ts";
 import { createJourneyMapScene, spreadJourneyMapPoints } from "./journey-map.ts";
+import { createClientRequestId } from "./client-request-id.ts";
 
 const fileDetails = (name: string, type: string, size = 1024) => ({ name, type, size });
+
+test("client request IDs work when randomUUID is unavailable", () => {
+  const cryptoWithoutRandomUuid = {
+    getRandomValues(array: Uint8Array) {
+      const bytes = array;
+      for (let index = 0; index < bytes.length; index += 1) bytes[index] = index;
+      return array;
+    },
+  } as unknown as Pick<Crypto, "getRandomValues">;
+  const generated = createClientRequestId(cryptoWithoutRandomUuid);
+  assert.match(generated, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
+  const minimal = createClientRequestId(null);
+  assert.match(minimal, /^request-/);
+});
+
+test("client request IDs keep the native desktop path when available", () => {
+  const expected = "00000000-0000-4000-8000-000000000000";
+  assert.equal(createClientRequestId({ randomUUID: () => expected }), expected);
+});
 
 test("photo intake accepts supported still-image formats, including iPhone HEIC", () => {
   assert.equal(photoFormat(fileDetails("coast.jpeg", "image/jpeg")), "jpeg");
@@ -29,10 +49,34 @@ test("undefined storage layout remains legacy and retains every durable copy", (
   assert.deepEqual(durablePhotoStorageIds(legacy), ["original", "thumb", "display", "large"]);
 });
 
-test("single-image storage retains only its optimized durable file", () => {
+test("existing optimized single-image storage retains only its durable file", () => {
   const photo = { storageId: "optimized", storageLayout: SINGLE_OPTIMIZED_STORAGE };
   assert.equal(photoStorageLayout(photo), SINGLE_OPTIMIZED_STORAGE);
   assert.deepEqual(durablePhotoStorageIds(photo), ["optimized"]);
+});
+
+test("new mixed-format single-image storage retains only its durable file", () => {
+  const photo = { storageId: "stored", storageLayout: SINGLE_IMAGE_STORAGE };
+  assert.equal(photoStorageLayout(photo), SINGLE_IMAGE_STORAGE);
+  assert.deepEqual(durablePhotoStorageIds(photo), ["stored"]);
+});
+
+test("original fallback is limited to JPEG, PNG, and WebP", () => {
+  assert.equal(originalFallbackMimeType(fileDetails("coast.jpg", "image/jpeg")), "image/jpeg");
+  assert.equal(originalFallbackMimeType(fileDetails("coast.png", "image/png")), "image/png");
+  assert.equal(originalFallbackMimeType(fileDetails("coast.webp", "image/webp")), "image/webp");
+  assert.equal(originalFallbackMimeType(fileDetails("IMG_1234.HEIC", "image/heic")), undefined);
+  assert.equal(originalFallbackMimeType(fileDetails("negative.dng", "image/dng")), undefined);
+});
+
+test("backend storage rules accept one optimized WebP or one exact normal-format fallback", () => {
+  assert.equal(storedPhotoValidationError({ kind: "optimized_webp", sourceType: "image/jpeg", sourceSize: 10, storedType: "image/webp", storedSize: 8 }), undefined);
+  for (const type of ["image/jpeg", "image/png", "image/webp"]) {
+    assert.equal(storedPhotoValidationError({ kind: "original_fallback", sourceType: type, sourceSize: 10, storedType: type, storedSize: 10 }), undefined);
+  }
+  assert.match(storedPhotoValidationError({ kind: "original_fallback", sourceType: "image/heic", sourceSize: 10, storedType: "image/heic", storedSize: 10 }) ?? "", /type/i);
+  assert.match(storedPhotoValidationError({ kind: "original_fallback", sourceType: "image/jpeg", sourceSize: 10, storedType: "image/png", storedSize: 10 }) ?? "", /match/i);
+  assert.match(storedPhotoValidationError({ kind: "optimized_webp", sourceType: "image/jpeg", sourceSize: 10, storedType: "image/webp", storedSize: 0 }) ?? "", /empty/i);
 });
 
 test("legacy storage deletion does not delete a shared identifier twice", () => {
@@ -55,6 +99,17 @@ test("photo intake rejects videos, misleading extensions, and oversized images c
   assert.match(photoFileError(fileDetails("clip.jpg", "video/mp4")) ?? "", /video/i);
   assert.match(photoFileError(fileDetails("notes.jpg", "text/plain")) ?? "", /supported photo/i);
   assert.match(photoFileError(fileDetails("large.jpg", "image/jpeg", (50 * 1024 * 1024) + 1)) ?? "", /50 MB/i);
+  assert.equal(photoFileError(fileDetails("IMG_1234.DNG", "image/x-adobe-dng")), "RAW/DNG photos aren’t supported yet. RAW support is coming soon. For now, upload a JPEG version of this photo.");
+});
+
+test("active uploads only ask for reselection when their source is no longer on this device", () => {
+  assert.equal(uploadItemNeedsSource("pending", true), false);
+  assert.equal(uploadItemNeedsSource("uploading", true), false);
+  assert.equal(uploadItemNeedsSource("failed", true), false);
+  assert.equal(uploadItemNeedsSource("pending", false), true);
+  assert.equal(uploadItemNeedsSource("uploading", false), true);
+  assert.equal(uploadItemNeedsSource("failed", false), true);
+  assert.equal(uploadItemNeedsSource("uploaded", false), false);
 });
 
 test("the task limiter never starts more than its configured number of jobs", async () => {

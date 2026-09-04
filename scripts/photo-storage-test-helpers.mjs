@@ -45,11 +45,11 @@ export async function canvasPhoto(page, mimeType, name, color) {
 export async function createAccountAndJourney(page, journeyName) {
   const email = `storage-check-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
   await page.goto(baseUrl);
-  await visible(page.getByRole("button", { name: "Turn a trip into a book" }).first());
-  await page.getByRole("button", { name: "Turn a trip into a book" }).first().click();
+  await visible(page.getByRole("button", { name: "Build my journey" }).first());
+  await page.getByRole("button", { name: "Build my journey" }).first().click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("triplog-test-password");
-  await page.getByRole("button", { name: "Create account" }).click();
+  await page.locator(".auth-card").getByRole("button", { name: "Create account" }).click({ force: true });
   await page.waitForURL(/\/book/, { timeout: 60_000 });
   await visible(page.getByRole("heading", { name: "Your journeys" }));
   await page.getByRole("button", { name: "Create journey" }).click();
@@ -72,6 +72,8 @@ export async function permanentlyDeleteJourney(page, journeyName) {
   await visible(card);
   await card.locator(".journey-actions summary").click();
   await card.getByRole("button", { name: "Delete", exact: true }).click();
+  assert.equal(await card.locator(".journey-actions").getAttribute("open"), null, "Delete must close the journey-card menu before showing confirmation.");
+  await visible(card.locator(".delete-confirmation"));
   await card.getByRole("button", { name: "Move to Recently Deleted" }).click();
   await page.getByRole("tab", { name: /Recently Deleted/ }).click();
   const deleted = page.locator(".deleted-journey").filter({ hasText: journeyName });

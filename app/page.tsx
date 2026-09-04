@@ -24,16 +24,16 @@ export default function Home() {
         </header>
 
         <div className={styles.heroCopy}>
-          <p className={styles.kicker}>Your private travel book</p>
-          <h1 id="hero-title">Your trip happened. Don&apos;t let it disappear into your camera roll.</h1>
+          <p className={styles.kicker}>Your trip, reconstructed</p>
+          <h1 id="hero-title">Your trip photos already know where you went. Postcard turns them into something worth sharing.</h1>
           <p className={styles.heroSupporting}>
-            Drop in the photos from one trip. Postcard reconstructs the days, places, and moments—then gives you a beautiful travel book to make your own.
+            Reconstruct the places, moments and recommendations from one trip — so the next time a friend asks, you can send the journey instead of rebuilding it from memory.
           </p>
-          <p className={styles.trust}>Private by default. You choose what to keep, edit, and share.</p>
-          <LandingAuthAction className={styles.cta} mode="signUp">Turn a trip into a book</LandingAuthAction>
+          <p className={styles.trust}>A private record of the trip for you, too.</p>
+          <LandingAuthAction className={styles.cta} mode="signUp">Build my journey</LandingAuthAction>
         </div>
 
-        <div className={styles.heroBook} aria-label="Example Postcard travel book page">
+        <div className={styles.heroBook} aria-label="Example Postcard journey">
           <div className={styles.heroBookPhoto}>
             <Image
               src="/images/coast.jpg"
@@ -58,7 +58,7 @@ export default function Home() {
           <p>Your camera roll already holds the clues. Postcard groups your memories into a journey by day and place, ready for you to revisit.</p>
         </div>
 
-        <div className={styles.reconstructionVisual} aria-label="Photos becoming a day-by-day journey and finished book">
+        <div className={styles.reconstructionVisual} aria-label="Photos becoming a day-by-day reconstructed journey">
           <div className={styles.loosePhotos}>
             <p className={styles.visualLabel}>Your camera roll</p>
             <figure className={`${styles.loosePhoto} ${styles.loosePhotoOne}`}>
@@ -93,7 +93,7 @@ export default function Home() {
           <div className={styles.storyPath} aria-hidden="true"><span>→</span></div>
 
           <div className={styles.miniBook}>
-            <p className={styles.visualLabel}>Your travel book</p>
+            <p className={styles.visualLabel}>Your reconstructed journey</p>
             <div className={styles.miniBookSpread}>
               <div className={styles.miniBookImage}>
                 <Image src="/images/rice-terraces.jpg" alt="Bali temple presented in a finished Postcard page" fill sizes="220px" />
@@ -157,7 +157,7 @@ export default function Home() {
 
         <div className={styles.finalAction}>
           <p>Your photos are already waiting.</p>
-          <LandingAuthAction className={`${styles.cta} ${styles.darkCta}`} mode="signUp">Turn a trip into a book</LandingAuthAction>
+          <LandingAuthAction className={`${styles.cta} ${styles.darkCta}`} mode="signUp">Build my journey</LandingAuthAction>
         </div>
       </section>
     </main>

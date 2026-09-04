@@ -1,12 +1,12 @@
 "use client";
 
 import { Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery } from "convex/react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { api } from "@/convex/_generated/api";
 import { JourneyTimeline } from "./journey-timeline";
 import { AuthForm } from "./auth-form";
+import { StoredPhotoImage as Image } from "./stored-photo-image";
 
 function previewDates(startDate?: number, endDate?: number) {
   if (startDate === undefined || endDate === undefined) return "Trip dates";

@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { StoredPhotoImage as Image } from "./stored-photo-image";
 import { useState } from "react";
 import { formatCaptureTime } from "@/lib/reconstruction";
 import { DayNavigation, dayAnchorId, JourneyOverview, stopAnchorId } from "./journey-overview";

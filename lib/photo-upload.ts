@@ -39,15 +39,29 @@ export function canonicalPhotoMimeType(file: PhotoFileDetails): string | undefin
   return format === "jpeg" ? "image/jpeg" : `image/${format}`;
 }
 
+export function originalFallbackMimeType(file: PhotoFileDetails): "image/jpeg" | "image/png" | "image/webp" | undefined {
+  const contentType = canonicalPhotoMimeType(file);
+  return contentType === "image/jpeg" || contentType === "image/png" || contentType === "image/webp" ? contentType : undefined;
+}
+
 export function photoFileError(file: PhotoFileDetails): string | undefined {
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const mime = file.type.trim().toLowerCase();
   if (file.type.trim().toLowerCase().startsWith("video/")) {
     return `${file.name} is a video. Postcard accepts still photos only.`;
   }
+  if (extension === "dng" || extension === "raw" || mime === "image/dng" || mime === "image/x-adobe-dng" || mime === "image/raw" || mime === "image/x-raw") {
+    return "RAW/DNG photos aren’t supported yet. RAW support is coming soon. For now, upload a JPEG version of this photo.";
+  }
   if (!photoFormat(file)) {
-    return `${file.name} is not a supported photo. Choose a JPEG, PNG, WebP, HEIC, or HEIF image.`;
+    return `${file.name} is not a supported photo. Choose a JPEG, JPG, PNG, or WebP image.`;
   }
   if (file.size > MAX_PHOTO_FILE_SIZE) return `${file.name} is larger than 50 MB.`;
   return undefined;
+}
+
+export function uploadItemNeedsSource(status: "pending" | "uploading" | "uploaded" | "failed", sourceSelected: boolean) {
+  return status !== "uploaded" && !sourceSelected;
 }
 
 export function createTaskLimiter(concurrency: number) {

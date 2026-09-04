@@ -336,6 +336,12 @@ textarea { resize: vertical; line-height: 1.55; }
 .upload-activity strong { color: var(--forest); font-size: .88rem; font-variant-numeric: tabular-nums; }
 .upload-activity span { color: var(--ink-faint); font-size: .72rem; line-height: 1.45; text-align: right; }
 .upload-activity progress { grid-column: 1 / -1; width: 100%; height: 6px; margin-top: 8px; accent-color: var(--forest); }
+.photo-format-guidance { margin: 14px 2px 0; display: grid; gap: 5px; color: var(--timeline-muted); }
+.photo-format-guidance p { margin: 0; font-size: .73rem; line-height: 1.5; overflow-wrap: anywhere; }
+.photo-format-guidance strong { color: var(--timeline-ink); font-weight: 700; }
+.photo-trust-block { margin-top: 18px; padding: 18px 20px; display: grid; gap: 8px; border: 1px solid var(--timeline-border); border-radius: 12px; background: rgba(47, 102, 88, .035); }
+.photo-trust-block h2 { margin: 0 0 2px; color: var(--timeline-ink); font: 700 1rem/1.25 var(--sans); letter-spacing: -.015em; }
+.photo-trust-block p { max-width: 790px; margin: 0; color: var(--timeline-muted); font-size: .76rem; line-height: 1.55; overflow-wrap: anywhere; }
 .rejected-files { margin-top: 14px; padding: 16px; border-left: 3px solid var(--terracotta); background: #fff4ee; }
 .rejected-files h2 { margin: 0; color: var(--error); font-size: .88rem; }
 .rejected-files ul { margin: 10px 0 0; padding: 0; display: grid; gap: 8px; list-style: none; }
@@ -1131,6 +1137,7 @@ textarea { resize: vertical; line-height: 1.55; }
   .core-product .onboarding-header > p:not(.wordmark) { order: 3; flex: 1 0 100%; }
   .core-product .onboarding-header .text-button { margin-left: auto; }
   .photo-dropzone { min-height: 160px; padding: 28px 14px; }
+  .photo-trust-block { padding: 15px 16px; }
   .upload-activity { grid-template-columns: 1fr; padding: 13px 14px; }
   .upload-activity span { text-align: left; }
   .selection-grid { gap: 8px; }

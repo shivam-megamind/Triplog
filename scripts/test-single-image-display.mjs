@@ -10,6 +10,7 @@ import { createAccountAndJourney, permanentlyDeleteJourney, trackStorageUploads,
 const execFile = promisify(execFileCallback);
 const convexCli = path.resolve("node_modules/convex/bin/main.js");
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+const forceOriginalFallback = process.env.FORCE_ORIGINAL_FALLBACK === "1";
 
 async function convexRun(functionName, args, identity) {
   const command = [convexCli, "run", functionName, JSON.stringify(args), "--codegen", "disable"];
@@ -57,6 +58,18 @@ async function imageDetails(locator, timeout = 90_000) {
 const browser = await chromium.launch({ headless: true });
 const ownerContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
 const ownerPage = await ownerContext.newPage();
+if (forceOriginalFallback) {
+  await ownerPage.addInitScript(() => {
+    const nativeToBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = function (callback, type, quality) {
+      if (type === "image/webp") {
+        callback(new Blob([new Uint8Array([1])], { type: "image/png" }));
+        return;
+      }
+      nativeToBlob.call(this, callback, type, quality);
+    };
+  });
+}
 const journeyName = `Display regression ${Date.now()}`;
 const journeyTitle = `${journeyName} story`;
 const sourceName = "single-display-regression.jpg";
@@ -74,7 +87,7 @@ try {
   await ownerPage.getByRole("button", { name: "Upload 1 selected photo" }).click();
   await visible(ownerPage.getByText("Possibly unrelated", { exact: false }), 180_000);
   assert.equal(uploads.length, 1, "A fresh JPEG must make exactly one Convex storage request.");
-  assert.ok(uploads[0].contentType.startsWith("image/webp"), "The one durable upload must be a WebP.");
+  assert.ok(uploads[0].contentType.startsWith(forceOriginalFallback ? "image/jpeg" : "image/webp"), "The one durable upload must match the expected optimized or fallback type.");
 
   const reviewImage = await imageDetails(ownerPage.locator(".review-photo-card img").first());
   const audit = await inlineQuery(`
@@ -88,13 +101,14 @@ try {
   assert.ok(audit, "The disposable journey record should exist.");
   assert.equal(audit.photos.length, 1, "The JPEG should create one photo record.");
   const photo = audit.photos[0];
-  assert.equal(photo.storageLayout, "single_optimized_v1");
+  assert.equal(photo.storageLayout, "single_image_v1");
+  assert.equal(photo.storedPhotoKind, forceOriginalFallback ? "original_fallback" : "optimized_webp");
   assert.equal(photo.thumbnailStorageId, undefined);
   assert.equal(photo.displayStorageId, undefined);
   assert.equal(photo.largeStorageId, undefined);
   assert.equal(audit.file?._id, photo.storageId);
-  assert.equal(audit.file?.contentType, "image/webp");
-  assert.ok(audit.file?.size > 0, "The stored WebP must contain bytes.");
+  assert.equal(audit.file?.contentType, forceOriginalFallback ? "image/jpeg" : "image/webp");
+  assert.ok(audit.file?.size > 0, "The stored image must contain bytes.");
   assert.equal(photo.hasGpsMetadata, true);
   assert.equal(photo.hasDateMetadata, true);
   assert.ok(Math.abs(photo.latitude - 15.557387) < 0.00001);
@@ -108,16 +122,16 @@ try {
   assert.equal(savedPhoto.url, savedPhoto.thumbnailUrl);
   assert.ok(savedPhoto.url.includes(`/photo?storageId=${photo.storageId}`));
   const copies = await convexRun("trips:getPhotoCopies", { photoId: photo._id }, identity);
-  assert.equal(copies.storageLayout, "single_optimized_v1");
+  assert.equal(copies.storageLayout, "single_image_v1");
   assert.equal(copies.savedImageUrl, savedPhoto.url);
 
   const assetPage = await ownerContext.newPage();
   const assetResponse = await assetPage.goto(savedPhoto.url);
   assert.equal(assetResponse?.status(), 200);
-  assert.equal(assetResponse?.headers()["content-type"], "image/webp");
+  assert.equal(assetResponse?.headers()["content-type"], forceOriginalFallback ? "image/jpeg" : "image/webp");
   const storedDimensions = await assetPage.evaluate(() => ({ width: document.images[0]?.naturalWidth, height: document.images[0]?.naturalHeight }));
-  assert.ok(storedDimensions.width > 0 && storedDimensions.height > 0, "The stored WebP must decode as an image.");
-  assert.ok(Math.max(storedDimensions.width, storedDimensions.height) <= 1600, "The optimized WebP must stay within 1600 pixels.");
+  assert.ok(storedDimensions.width > 0 && storedDimensions.height > 0, "The stored image must decode as an image.");
+  if (!forceOriginalFallback) assert.ok(Math.max(storedDimensions.width, storedDimensions.height) <= 1600, "The optimized WebP must stay within 1600 pixels.");
   await assetPage.close();
 
   await ownerPage.reload();
@@ -140,9 +154,17 @@ try {
 
   await ownerPage.locator('summary[aria-label="More journey actions"]').click();
   await ownerPage.getByRole("button", { name: "Edit title and main photo" }).click();
+  assert.equal(await ownerPage.locator("details.workspace-menu").getAttribute("open"), null, "Edit title and main photo must close the mobile menu.");
+  await visible(ownerPage.locator('[aria-label="Edit journey title and main photo"]'));
   await ownerPage.getByRole("textbox", { name: /^Journey title/ }).fill(journeyTitle);
   await ownerPage.getByRole("button", { name: "Save", exact: true }).click();
   await visible(ownerPage.getByText("Title and main photo saved"));
+  await ownerPage.locator('summary[aria-label="More journey actions"]').click();
+  await ownerPage.getByRole("button", { name: "Edit trip details" }).click();
+  assert.equal(await ownerPage.locator("details.workspace-menu").getAttribute("open"), null, "Edit trip details must close the mobile menu.");
+  const detailsEditor = ownerPage.locator('[aria-label="Edit trip details"]');
+  await visible(detailsEditor);
+  await detailsEditor.getByRole("button", { name: "Cancel" }).click();
   await ownerPage.getByRole("button", { name: /^Preview/ }).click();
   await visible(ownerPage.getByRole("button", { name: "Back to timeline" }));
   const previewImage = await imageDetails(ownerPage.locator(".timeline-preview-screen img").first());
@@ -184,6 +206,7 @@ try {
   cleanedUp = true;
   console.log(JSON.stringify({
     selected: 1,
+    mode: forceOriginalFallback ? "original_fallback" : "optimized_webp",
     savedPhotoRecords: 1,
     storageUploads: uploads.length,
     storedContentType: audit.file.contentType,

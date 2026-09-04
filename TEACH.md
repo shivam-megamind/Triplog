@@ -2,12 +2,12 @@
 
 ## Milestone 1 — public landing page
 
-The existing landing page was retained without a redesign or source change.
+The landing page keeps its existing design and actions, with its words focused on reconstructing a completed trip rather than making a travel book.
 
 - `/` is the public introduction to Postcard.
 - Its main actions let a new visitor create an account and a returning visitor sign in.
 - Authenticated visitors can continue to `/book`.
-- The page explains that Postcard reconstructs a journey from photos, keeps it private by default, and lets the traveller decide what to share.
+- The page explains that the traveller's photos already contain evidence of the trip, Postcard reconstructs that evidence into a useful journey, and the traveller can keep it private or share it when someone asks.
 - `app/page.tsx` contains the landing content.
 - `app/landing.module.css` contains the landing-only responsive design.
 - `public/images` contains only the example photographs used on the landing page; they are not connected to a user's private photos.
@@ -16,7 +16,7 @@ The landing page is separate from the private product. A failure in the private 
 
 ## Validation status
 
-Milestone 1's automated checks pass. The existing saved desktop and mobile screenshots confirm the retained responsive layout. The later core-stabilization browser run opened the protected landing CTA and created an account without changing the landing source.
+The copy-focused browser check passed at 390px and 1440px. It confirmed that the new headline stays inside the hero, does not overlap the Postcard visual, causes no horizontal page overflow, and that both **Build my journey** actions still open the existing account dialog. Lint, TypeScript checking, and the production build also pass.
 
 ## Milestone 2 — authentication
 
@@ -70,7 +70,7 @@ The earlier **Restore all** path became stuck because it ran the first reconstru
 - The picker accepts JPEG, PNG, and WebP photos only, rejects files above 50 MB, and rejects an entire selection if it would take the journey above the internal 100-photo safety limit.
 - HEIC and HEIF are rejected with instructions to export as JPEG, PNG, or WebP. V1 does not add a conversion library.
 - Each selected photo has a persistent Convex upload record. Completed photos are skipped on retry; interrupted or failed items can be reselected and matched without restarting successful items.
-- For a new upload, Postcard reads the untouched device file first, then creates and stores one approximately 1600px WebP. The device original is never sent to Convex. Older photos still use their original, thumbnail, display, and large files without migration.
+- For a new upload, Postcard reads the untouched device file first, then tries to create one approximately 1600px WebP. If Safari cannot produce WebP from a JPEG, PNG, or WebP source, Postcard stores that one supported original instead. Older photos still use their original, thumbnail, display, and large files without migration.
 - Capture time, GPS, dimensions, duplicate fingerprints, visual fingerprints, and a conservative dark/blurry signal are stored as evidence. GPS coordinates are converted to cached OpenStreetMap place names.
 
 ## Milestones 11–17 — reconstruction and review
@@ -146,8 +146,24 @@ To run that check locally, start `npm run dev -- -p 3001` in one terminal. In a 
 
 ## Single-image photo storage
 
-`storageLayout: "single_optimized_v1"` tells the app that a photo has one durable image. If that field is missing, the photo is legacy, so its original, thumbnail, display, and large identifiers continue to work exactly as before.
+`storageLayout: "single_image_v1"` tells the app that a new photo has one durable image, whether it is an optimized WebP or a supported original fallback. Existing `single_optimized_v1` records still mean one optimized image. If the field is missing, the photo is legacy, so its original, thumbnail, display, and large identifiers continue to work exactly as before.
 
 For each new selection, the browser finishes EXIF date/GPS reading, exact hashing, and visual fingerprinting against the original file before conversion begins. Native browser decoding also applies the photo orientation when drawing the WebP. HEIC and HEIF follow this same path only when the browser can decode them; otherwise the item fails before any file upload and tells the traveller to export it as JPEG, PNG, or WebP.
 
-Convex checks that the durable upload really is a non-empty WebP before it creates the photo record. If the final record request has an uncertain result, a reconciliation request either confirms the record or removes the unattached file. A small Convex file endpoint reads the saved Blob by its storage identifier; new photos use their one identifier for every display role, while legacy photos still use their separate original, thumbnail, display, and large identifiers. Next.js is allowed to resize Convex's region-qualified image hosts for cards, timelines, maps, and shared journeys. Photo details show four copy links for legacy photos and one **Saved web image** link for new photos.
+Convex checks that the durable upload is non-empty and matches the browser's declared choice: a bounded WebP for optimization, or the exact-sized JPEG, PNG, or WebP source for fallback. HEIC/HEIF originals are not accepted as fallback. If the final record request has an uncertain result, a reconciliation request either confirms the record or removes the unattached file. A small Convex file endpoint reads the saved Blob by its storage identifier; new photos use their one identifier for every display role, while legacy photos still use their separate original, thumbnail, display, and large identifiers. Next.js is allowed to resize Convex's region-qualified image hosts for cards, timelines, maps, and shared journeys. Photo details show four copy links for legacy photos and one **Saved web image** link for new photos.
+
+## Final mobile upload polish
+
+Postcard now separates an upload that is still working from one that truly needs help. A saved upload record can say pending or uploading while Safari prepares or sends the selected file; as long as that source file is still present on the page, the traveller sees the normal processing card instead of an **Unfinished** reselection warning. If the page is later reopened without that source, the existing reselection recovery still appears. A definite failure still keeps its own **Retry** action.
+
+The picker recommends JPEG/JPG, PNG, and WebP; describes HEIC/HEIF as browser-dependent beta support; and says RAW/DNG is not supported yet. The nearby trust note explains what the product actually does: save one chosen photo copy, keep the journey private unless it is shared, allow sharing to be stopped, and keep deleted journeys recoverable for 30 days before permanent deletion removes their photo copies.
+
+Journey-card actions still use the same Rename, Edit trip details, and Delete screens. The only menu change is that the three-dot panel closes as soon as one of those actions is chosen, so it no longer covers the next step on a phone.
+
+## Safari fallback display and menu state
+
+The real Safari fallback upload was healthy: its photo record pointed to one non-empty JPEG, and the Convex photo address returned that JPEG correctly. The break happened afterward. Next Image changed the working Convex address into a local `/_next/image` address, which requires the local Next server to download the file before sending it to the phone. That server-side download failed, so Safari received a 500 error page instead of an image.
+
+Stored journey photos now keep Next Image's sizing and layout behavior but use its supported direct-delivery mode. The browser requests the existing Convex photo address itself, so an optimized WebP and a fallback JPEG, PNG, or WebP follow the same display path. This does not create, convert, or store another photo.
+
+There are two different three-dot menus: one on a journey card and one inside an open journey. The earlier fix covered only the card menu, while the real iPhone test used the open-journey menu. Both menus now keep their open/closed value in React state. Selecting an action changes that value to closed in the same render that opens the editor or delete confirmation, preventing both layers from remaining visible together.

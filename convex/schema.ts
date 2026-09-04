@@ -53,7 +53,8 @@ export default defineSchema({
   photos: defineTable({
     tripId: v.id("trips"),
     storageId: v.id("_storage"),
-    storageLayout: v.optional(v.literal("single_optimized_v1")),
+    storageLayout: v.optional(v.union(v.literal("single_optimized_v1"), v.literal("single_image_v1"))),
+    storedPhotoKind: v.optional(v.union(v.literal("optimized_webp"), v.literal("original_fallback"))),
     fileName: v.string(),
     order: v.number(),
     capturedAt: v.optional(v.number()),

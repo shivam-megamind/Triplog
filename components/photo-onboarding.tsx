@@ -5,8 +5,8 @@ import { useMutation, useQuery } from "convex/react";
 import { DragEvent, useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { createOptimizedPhoto, readPhotoMetadata } from "@/lib/photo-metadata";
-import { canonicalPhotoMimeType, createTaskLimiter, photoFileError } from "@/lib/photo-upload";
+import { prepareStoredPhoto, readPhotoMetadata } from "@/lib/photo-metadata";
+import { canonicalPhotoMimeType, createTaskLimiter, photoFileError, uploadItemNeedsSource } from "@/lib/photo-upload";
 import { MAX_PHOTOS } from "@/lib/trip";
 
 type LocalStatus = "ready" | "preparing" | "uploading" | "saved" | "failed";
@@ -22,8 +22,8 @@ function fileSignature(file: Pick<File, "name" | "size">) {
   return `${file.name}:${file.size}`;
 }
 
-async function storeBlob(uploadUrl: string, blob: Blob) {
-  const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": blob.type || "application/octet-stream" }, body: blob });
+async function storeBlob(uploadUrl: string, blob: Blob, contentType: string) {
+  const response = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": contentType }, body: blob });
   if (!response.ok) throw new Error("The connection stopped while saving this photo.");
   return (await response.json() as { storageId: Id<"_storage"> }).storageId;
 }
@@ -73,7 +73,8 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
 
   const persistedByKey = new Map((uploadItems ?? []).map((item) => [item.uploadKey, item]));
   const uploadedSignatures = new Set((uploadItems ?? []).filter((item) => item.status === "uploaded").map((item) => fileSignature({ name: item.fileName, size: item.fileSize })));
-  const unfinished = (uploadItems ?? []).filter((item) => item.status !== "uploaded");
+  const selectedKeys = new Set(selected.map((photo) => photo.key));
+  const unfinished = (uploadItems ?? []).filter((item) => uploadItemNeedsSource(item.status, selectedKeys.has(item.uploadKey)));
   const uploadedCount = Math.max((uploadItems ?? []).filter((item) => item.status === "uploaded").length, existingPhotoCount);
   const failedCount = (uploadItems ?? []).filter((item) => item.status === "failed").length;
 
@@ -187,18 +188,18 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
         let uploadedStorageId: Id<"_storage"> | undefined;
         try {
           await markUploadAttempt({ tripId: existingTripId, uploadKey: photo.key });
-          const { metadata, optimized } = await preparePhoto(async () => {
+          const { metadata, storedPhoto } = await preparePhoto(async () => {
             updateLocal(photo.key, { status: "preparing", error: undefined });
             await waitForVisiblePaint();
             const metadata = await readPhotoMetadata(photo.file);
-            const optimized = await createOptimizedPhoto(photo.file);
-            return { metadata, optimized };
+            const storedPhoto = await prepareStoredPhoto(photo.file);
+            return { metadata, storedPhoto };
           });
           updateLocal(photo.key, { status: "uploading" });
           setBatchProgress((current) => current ? { ...current, stage: "uploading" } : current);
           const uploadUrl = await generateUploadUrl({ tripId: existingTripId });
-          uploadedStorageId = await uploadBlob(() => storeBlob(uploadUrl, optimized.blob));
-          await addPhoto({ tripId: existingTripId, uploadKey: photo.key, storageId: uploadedStorageId, fileName: photo.file.name, order: persistedByKey.get(photo.key)?.order ?? firstNewOrder + index, ...metadata });
+          uploadedStorageId = await uploadBlob(() => storeBlob(uploadUrl, storedPhoto.blob, storedPhoto.contentType));
+          await addPhoto({ tripId: existingTripId, uploadKey: photo.key, storageId: uploadedStorageId, storedPhotoKind: storedPhoto.kind, fileName: photo.file.name, order: persistedByKey.get(photo.key)?.order ?? firstNewOrder + index, ...metadata });
           saved += 1;
           updateLocal(photo.key, { status: "saved" });
           finishPhoto(false);
@@ -264,8 +265,19 @@ export function PhotoOnboarding({ existingTripId, existingPhotoCount = 0, recons
       <section className="selection-workspace" aria-label="Choose trip photographs">
         <label className="photo-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
           <input type="file" disabled={uploadItems === undefined || selecting || uploading} accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif" multiple onChange={(event) => { const files = Array.from(event.target.files ?? []); event.currentTarget.value = ""; void receiveFiles(files); }} />
-          <span className="dropzone-title">{uploadItems === undefined ? "Checking saved photos…" : selecting ? "Preparing photo list…" : "Choose trip photos"}</span><span>or drag JPEG, PNG, WebP, HEIC, and HEIF images here — videos are excluded</span>
+          <span className="dropzone-title">{uploadItems === undefined ? "Checking saved photos…" : selecting ? "Preparing photo list…" : "Choose trip photos"}</span><span>or drag photos here — videos are excluded</span>
         </label>
+        <div className="photo-format-guidance">
+          <p><strong>Best results:</strong> JPEG, JPG, PNG and WebP.</p>
+          <p><strong>Using iPhone photos?</strong> HEIC/HEIF support is still in beta and may not work on every browser. If an HEIC photo fails, export or share it as JPEG and try again.</p>
+          <p>RAW/DNG photos aren’t supported yet — RAW support is coming soon.</p>
+        </div>
+        <aside className="photo-trust-block" aria-labelledby="photo-trust-title">
+          <h2 id="photo-trust-title">Your photos stay yours</h2>
+          <p>Postcard saves one copy of each photo you choose so it can build and show your journey. When your browser can, that copy is optimized for the web; if it can’t, Postcard may save the original JPEG, PNG or WebP instead.</p>
+          <p>Your journey stays private to you unless you choose to share it.</p>
+          <p>You stay in control. You can stop sharing at any time. Deleted journeys can be recovered for 30 days; permanent deletion removes their stored photo copies.</p>
+        </aside>
         {selectionReceipt ? <div className="upload-activity selection-receipt" role="status" aria-live="polite"><strong>{countLabel(selectionReceipt.total, "photo")} selected</strong><span>{selectionReceipt.preparing ? "Preparing your photo list…" : `${countLabel(selectionReceipt.accepted ?? 0, "photo")} ready · ${countLabel(selectionReceipt.rejected ?? 0, "file")} need attention`}</span></div> : null}
         {batchProgress ? <div className="upload-activity batch-progress" role="status" aria-live="polite"><strong>{batchProgress.stage === "preparing" ? `Preparing ${countLabel(batchProgress.total, "photo")}` : `Uploading ${batchProgress.finished} of ${batchProgress.total}`}</strong><span>{batchProgress.failures ? `${countLabel(batchProgress.failures, "file")} failed and can be retried below.` : "Failed items will not stop the remaining photos."}</span><progress max={batchProgress.total} value={batchProgress.finished}>{batchProgress.finished} of {batchProgress.total}</progress></div> : null}
         <div className="upload-overview" aria-live="polite">

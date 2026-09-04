@@ -1,12 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import { useMutation } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { dateInputTimestamp, journeyDetailsChanged, journeyDetailsErrors, journeyDetailsInput, MAX_DESTINATION_LENGTH, MAX_TITLE_LENGTH, type JourneyDetailsErrors, type JourneyDetailsInput } from "@/lib/trip";
+import { StoredPhotoImage as Image } from "./stored-photo-image";
 
 type TripSummary = FunctionReturnType<typeof api.trips.listMine>[number];
 type SharedTripSummary = FunctionReturnType<typeof api.trips.listSharedWithMe>[number];
@@ -52,6 +52,7 @@ export function JourneysHome({
   const restoreTrip = useMutation(api.trips.restoreTrip);
   const permanentlyDeleteTrip = useMutation(api.trips.permanentlyDeleteTrip);
   const [view, setView] = useState<"mine" | "shared" | "deleted">("mine");
+  const [openActionsId, setOpenActionsId] = useState<Id<"trips"> | null>(null);
   const [renamingId, setRenamingId] = useState<Id<"trips"> | null>(null);
   const [deletingId, setDeletingId] = useState<Id<"trips"> | null>(null);
   const [editingDetailsId, setEditingDetailsId] = useState<Id<"trips"> | null>(null);
@@ -195,12 +196,12 @@ export function JourneysHome({
                     <p>{trip.photoCount} photo{trip.photoCount === 1 ? "" : "s"} · {tripDates(trip.startDate, trip.endDate)} · Updated {updatedLabel(trip.updatedAt)}</p>
                     <p className="journey-processing">{processingLabel(trip.processingStatus)}</p>
                   </div>
-                  <details className="journey-actions">
+                  <details className="journey-actions" open={openActionsId === trip._id} onToggle={(event) => { const isOpen = event.currentTarget.open; setOpenActionsId((current) => isOpen ? trip._id : current === trip._id ? null : current); }}>
                     <summary aria-label={`Actions for ${trip.title}`}>…</summary>
                     <div>
-                      <button type="button" onClick={() => beginRename(trip)}>Rename</button>
-                      <button type="button" onClick={() => beginDetailsEdit(trip)}>Edit trip details</button>
-                      <button type="button" className="danger-action" onClick={() => { setDeletingId(trip._id); setRenamingId(null); setEditingDetailsId(null); setFeedback(null); }}>Delete</button>
+                      <button type="button" onClick={() => { setOpenActionsId(null); beginRename(trip); }}>Rename</button>
+                      <button type="button" onClick={() => { setOpenActionsId(null); beginDetailsEdit(trip); }}>Edit trip details</button>
+                      <button type="button" className="danger-action" onClick={() => { setOpenActionsId(null); setDeletingId(trip._id); setRenamingId(null); setEditingDetailsId(null); setFeedback(null); }}>Delete</button>
                     </div>
                   </details>
                 </div>

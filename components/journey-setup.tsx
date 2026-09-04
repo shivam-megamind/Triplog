@@ -4,6 +4,7 @@ import { useMutation } from "convex/react";
 import { FormEvent, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
+import { createClientRequestId } from "@/lib/client-request-id";
 import { journeyDetailsErrors, MAX_DESTINATION_LENGTH, type JourneyDetailsErrors } from "@/lib/trip";
 
 function dateValue(value: string) {
@@ -14,7 +15,7 @@ function dateValue(value: string) {
 
 export function JourneySetup({ onCreated, onCancel }: { onCreated: (tripId: Id<"trips">) => void; onCancel: () => void }) {
   const createTrip = useMutation(api.trips.create);
-  const requestId = useRef(crypto.randomUUID());
+  const requestId = useRef(createClientRequestId());
   const [destination, setDestination] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");

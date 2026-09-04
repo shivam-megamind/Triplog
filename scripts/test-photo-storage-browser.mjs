@@ -53,8 +53,8 @@ function isStorageUpload(request) {
 async function createAccountAndJourney(page, journeyName) {
   const email = `storage-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
   await page.goto(baseUrl);
-  await visible(page.getByRole("button", { name: "Turn a trip into a book" }).first());
-  await page.getByRole("button", { name: "Turn a trip into a book" }).first().click();
+  await visible(page.getByRole("button", { name: "Build my journey" }).first());
+  await page.getByRole("button", { name: "Build my journey" }).first().click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("triplog-test-password");
   await page.getByRole("button", { name: "Create account" }).click();

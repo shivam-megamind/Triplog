@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types lib/trip.test.ts",
     "test:photo-storage": "node scripts/test-photo-storage-browser.mjs",
+    "test:safari-upload": "node scripts/test-safari-photo-fallback.mjs",
     "test:e2e": "node scripts/test-core-browser.mjs",
     "test:server-assets": "node scripts/check-server-assets.mjs"
   },

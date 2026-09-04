@@ -7,7 +7,7 @@ import { TripEditor } from "@/components/trip-editor";
 export default function Book() {
   return (
     <main>
-      <AuthLoading><div className="center-message">Opening your private book…</div></AuthLoading>
+      <AuthLoading><div className="center-message">Opening your journeys…</div></AuthLoading>
       <Unauthenticated><SignedOutRedirect returnTo="/book" /></Unauthenticated>
       <Authenticated><TripEditor /></Authenticated>
     </main>

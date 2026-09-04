@@ -53,6 +53,10 @@ async function checkLargeSelectionFeedback(page) {
   await page.locator('input[type="file"]').setInputFiles(files);
   await visible(page.getByText("18 photos selected", { exact: true }));
   await visible(page.getByText("18 photos ready · 0 files need attention", { exact: true }));
+  await visible(page.getByText("Best results: JPEG, JPG, PNG and WebP."));
+  await visible(page.getByText(/HEIC\/HEIF support is still in beta/));
+  await visible(page.getByText(/RAW\/DNG photos aren’t supported yet/));
+  await visible(page.getByRole("heading", { name: "Your photos stay yours" }));
   assert.equal(await page.locator(".upload-selection-grid li").count(), 18);
   await noHorizontalOverflow(page);
   await page.screenshot({ path: path.join(screenshotDirectory, "390-18-selected.png"), fullPage: true });
@@ -61,16 +65,46 @@ async function checkLargeSelectionFeedback(page) {
   await page.setViewportSize({ width: 1440, height: 1000 });
 }
 
+async function checkJourneyActionMenu(page, width) {
+  await page.setViewportSize({ width, height: width <= 430 ? 844 : 1000 });
+  const menu = page.locator("details.journey-actions").first();
+  const summary = menu.locator("summary");
+
+  await summary.click();
+  await menu.getByRole("button", { name: "Rename" }).click();
+  assert.equal(await menu.getAttribute("open"), null, `Rename left the action menu open at ${width}px`);
+  await visible(page.locator('.journey-card-panel[aria-label^="Rename"]'));
+  await page.locator('.journey-card-panel[aria-label^="Rename"]').getByRole("button", { name: "Cancel" }).click();
+
+  await summary.click();
+  await menu.getByRole("button", { name: "Edit trip details" }).click();
+  assert.equal(await menu.getAttribute("open"), null, `Edit trip details left the action menu open at ${width}px`);
+  await visible(page.locator(".trip-details-panel"));
+  await page.locator(".trip-details-panel").getByRole("button", { name: "Cancel" }).click();
+
+  await summary.click();
+  await menu.getByRole("button", { name: "Delete" }).click();
+  assert.equal(await menu.getAttribute("open"), null, `Delete left the action menu open at ${width}px`);
+  await visible(page.locator(".delete-confirmation"));
+  await page.locator(".delete-confirmation").getByRole("button", { name: "Cancel" }).click();
+  await noHorizontalOverflow(page);
+}
+
 async function createAccountAndJourney(page) {
   const email = `core-pass-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`;
   await page.goto(baseUrl);
-  const landingAction = page.getByRole("button", { name: "Turn a trip into a book" }).first();
+  const landingAction = page.getByRole("button", { name: "Build my journey" }).first();
   await visible(landingAction);
   await landingAction.click();
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill("triplog-test-password");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL(/\/book/);
+  await page.locator(".auth-card").getByRole("button", { name: "Create account" }).click({ force: true });
+  try {
+    await page.waitForURL(/\/book/, { timeout: 60_000 });
+  } catch (error) {
+    const visibleError = await page.locator('[role="alert"]:visible').allTextContents();
+    throw new Error(`Test account did not reach /book. Current URL: ${page.url()}. Visible error: ${visibleError.join(" | ") || "none"}. ${error instanceof Error ? error.message : String(error)}`);
+  }
   await visible(page.getByRole("heading", { name: "Your journeys" }));
   assert.equal(await page.getByText("No personal notes added.").count(), 0);
   await checkJourneyLibraryWidths(page);
@@ -114,6 +148,8 @@ async function run() {
     assert.equal(await page.getByRole("textbox", { name: /^Memory/ }).count(), 0, "Editor should close after save");
 
     await page.reload();
+    await checkJourneyActionMenu(page, 390);
+    await checkJourneyActionMenu(page, 1440);
     await page.getByRole("button", { name: "Continue journey" }).click();
     await visible(page.getByText("The sea was calm just before sunset."));
     await visible(page.getByText("The quieter path started beside the old wall."));

@@ -14,7 +14,7 @@ import {
   tripDetailsReprocessingPlan,
 } from "../lib/trip";
 import { groupedPhotoCount, reconstructTravelTimeline } from "../lib/reconstruction";
-import { durablePhotoStorageIds, photoDeliveryUrl, SINGLE_OPTIMIZED_STORAGE } from "../lib/photo-storage";
+import { durablePhotoStorageIds, isSingleImageStorage, photoDeliveryUrl, SINGLE_IMAGE_STORAGE, storedPhotoValidationError } from "../lib/photo-storage";
 import { suggestJourneyTitle } from "../lib/title-suggestion";
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -22,7 +22,6 @@ import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
-const MAX_OPTIMIZED_FILE_SIZE = 12 * 1024 * 1024;
 const SUPPORTED_SOURCE_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]);
 const processingStatus = v.union(
   v.literal("selecting"),
@@ -233,9 +232,11 @@ export const getPhotoCopies = query({
     const photo = await ctx.db.get(photoId);
     if (!photo) return null;
     await requireOwnedTrip(ctx, photo.tripId);
-    if (photo.storageLayout === SINGLE_OPTIMIZED_STORAGE) {
+    const storageLayout = photo.storageLayout ?? "legacy";
+    if (isSingleImageStorage(storageLayout)) {
       return {
-        storageLayout: SINGLE_OPTIMIZED_STORAGE,
+        storageLayout,
+        storedPhotoKind: photo.storedPhotoKind,
         savedImageUrl: await photoRoleUrl(ctx, photo.storageId),
       };
     }
@@ -532,6 +533,7 @@ export const addPhoto = mutation({
     tripId: v.id("trips"),
     uploadKey: v.string(),
     storageId: v.id("_storage"),
+    storedPhotoKind: v.union(v.literal("optimized_webp"), v.literal("original_fallback")),
     fileName: v.string(),
     order: v.number(),
     ...photoMetadataArgs,
@@ -548,15 +550,21 @@ export const addPhoto = mutation({
     const photos = await ctx.db.query("photos").withIndex("by_trip", (q) => q.eq("tripId", args.tripId)).collect();
     const storedImage = await ctx.db.system.get(args.storageId);
     const invalidSource = !SUPPORTED_SOURCE_PHOTO_TYPES.has(args.fileType);
-    const invalidStoredImage = !storedImage || storedImage.contentType !== "image/webp" || storedImage.size <= 0 || storedImage.size > MAX_OPTIMIZED_FILE_SIZE;
-    if (photos.length >= MAX_PHOTOS || args.order < 0 || args.order >= MAX_PHOTOS || args.fileSize > MAX_FILE_SIZE || invalidSource || invalidStoredImage) {
+    const storedImageError = storedPhotoValidationError({
+      kind: args.storedPhotoKind,
+      sourceType: args.fileType,
+      sourceSize: args.fileSize,
+      storedType: storedImage?.contentType,
+      storedSize: storedImage?.size,
+    });
+    if (photos.length >= MAX_PHOTOS || args.order < 0 || args.order >= MAX_PHOTOS || args.fileSize > MAX_FILE_SIZE || invalidSource || storedImageError) {
       if (storedImage) await ctx.storage.delete(args.storageId);
       throw new ConvexError(args.fileSize > MAX_FILE_SIZE
         ? "This photo is larger than 50 MB."
         : invalidSource
           ? "This photo is not a supported JPEG, PNG, WebP, HEIC, or HEIF image."
-          : invalidStoredImage
-            ? "The prepared photo was not a valid WebP image."
+          : storedImageError
+            ? storedImageError
           : `A trip can hold up to ${MAX_PHOTOS} photos.`);
     }
     const reviewState = initialPhotoReviewState({
@@ -568,7 +576,7 @@ export const addPhoto = mutation({
     const placementConfidence = args.hasDateMetadata && args.hasGpsMetadata ? "high" as const : args.hasDateMetadata ? "medium" as const : "low" as const;
     const photoId = await ctx.db.insert("photos", {
       ...args,
-      storageLayout: SINGLE_OPTIMIZED_STORAGE,
+      storageLayout: SINGLE_IMAGE_STORAGE,
       fileName: args.fileName.slice(0, 160),
       reviewState,
       placementConfidence,

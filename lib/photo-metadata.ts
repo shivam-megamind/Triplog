@@ -1,6 +1,7 @@
 import { parse } from "exifr";
 import { localDateKey } from "./trip";
-import { canonicalPhotoMimeType, photoFormat } from "./photo-upload";
+import { canonicalPhotoMimeType, originalFallbackMimeType, photoFormat } from "./photo-upload";
+import type { StoredPhotoKind } from "./photo-storage";
 
 export type PhotoMetadata = {
   capturedAt?: number;
@@ -114,6 +115,17 @@ export type OptimizedPhoto = {
   height: number;
 };
 
+export type StoredPhotoPreparation = {
+  blob: Blob;
+  contentType: "image/webp" | "image/jpeg" | "image/png";
+  kind: StoredPhotoKind;
+};
+
+function heicPreparationMessage(format: "heic" | "heif") {
+  const label = format.toUpperCase();
+  return `This ${label} photo couldn’t be prepared on this browser. ${label} support is still in beta. Try uploading a JPEG version instead.`;
+}
+
 async function resizedBlob(bitmap: ImageBitmap, maxWidth: number, quality: number): Promise<Blob> {
   const scale = Math.min(1, maxWidth / bitmap.width);
   const canvas = document.createElement("canvas");
@@ -135,7 +147,7 @@ export async function createOptimizedPhoto(file: File): Promise<OptimizedPhoto> 
   } catch {
     const format = photoFormat(file);
     if (format === "heic" || format === "heif") {
-      throw new Error(`${file.name} cannot be prepared by this browser. Export it as JPEG, PNG, or WebP and select it again.`);
+      throw new Error(heicPreparationMessage(format));
     }
     throw new Error(`${file.name} could not be read as a photo.`);
   }
@@ -148,5 +160,25 @@ export async function createOptimizedPhoto(file: File): Promise<OptimizedPhoto> 
     return { blob, width, height };
   } finally {
     bitmap.close();
+  }
+}
+
+export async function prepareStoredPhoto(
+  file: File,
+  optimize: (source: File) => Promise<OptimizedPhoto> = createOptimizedPhoto,
+): Promise<StoredPhotoPreparation> {
+  const format = photoFormat(file);
+  try {
+    const optimized = await optimize(file);
+    return { blob: optimized.blob, contentType: "image/webp", kind: "optimized_webp" };
+  } catch (error) {
+    if (format === "jpeg" || format === "png" || format === "webp") {
+      const contentType = originalFallbackMimeType(file);
+      if (contentType) return { blob: file, contentType, kind: "original_fallback" };
+    }
+    if (format === "heic" || format === "heif") {
+      throw new Error(heicPreparationMessage(format));
+    }
+    throw error;
   }
 }

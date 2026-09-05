@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useConvexAuth } from "convex/react";
 import { AuthForm } from "./auth-form";
 
@@ -68,7 +69,7 @@ export function LandingAuthAction({
       >
         {children}
       </button>
-      {open ? (
+      {open ? createPortal(
         <div className="landing-auth-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) close(); }}>
           <section className="landing-auth-dialog" role="dialog" aria-modal="true" aria-label={activeMode === "signIn" ? "Sign in to Postcard" : "Create a Postcard account"}>
             <button className="landing-auth-close" type="button" onClick={close} aria-label="Close authentication">Close</button>
@@ -81,7 +82,8 @@ export function LandingAuthAction({
               }}
             />
           </section>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   );

@@ -12,7 +12,7 @@ A signed-in traveller uploads selected photos from one completed trip and receiv
 
 ## Retained application surfaces
 
-The existing landing-page design, signup/sign-in interface, and sign-out-to-landing flow are retained. They must not be redesigned or rebuilt without the user's approval.
+The existing landing-page design, signup/sign-in interface, and sign-out-to-landing flow are retained. The authentication dialog must render above every landing-page stacking layer, block pointer input to the page while open, and keep accessible 44px landing controls on mobile. These surfaces must not be redesigned or rebuilt without the user's approval.
 The user-facing product name is Postcard. Postcard is positioned as reconstructing a completed trip from the traveller's own photos into a useful, private, shareable journey—not as a travel book or future-trip planner. Existing internal Triplog identifiers, routes, deployments, and infrastructure names remain unchanged.
 
 ## V1 boundaries

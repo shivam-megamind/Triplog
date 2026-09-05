@@ -173,3 +173,9 @@ There are two different three-dot menus: one on a journey card and one inside an
 Recipient Preview could already display the first included photo when a fresh journey did not yet have a saved main-photo ID. Publishing previously checked only the saved ID, so the screen looked ready while the server rejected it.
 
 Publishing now keeps any main photo the traveller explicitly chose. When that saved value is absent, the server finds the first included photo in the journey's chronological order, checks that it belongs to the journey, and saves its ID together with the published state and share token. Convex performs those writes as one all-or-nothing transaction, so the journey cannot be published with a link while missing the chosen cover. If no included photo exists, the existing cover error remains.
+
+## Desktop authentication layering
+
+The landing hero and later story sections each create their own stacking layer. The authentication backdrop used to live inside the hero, so even a large `z-index` could not lift it outside that layer; later page content could therefore sit above part of the visible dialog and receive a desktop click.
+
+The same backdrop and form now render at the document body through a React portal. A portal changes where the existing interface is attached without changing its state or authentication behavior. The backdrop owns the full viewport above the landing page, and the dialog has its own layer above that backdrop. Closing it removes the portal and restores the page. The cream-panel headings now use Postcard's dark green, and the mobile landing Sign in control keeps a minimum 44-by-44-pixel tap area without enlarging its lettering.

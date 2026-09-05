@@ -87,6 +87,7 @@
 }
 
 .signIn {
+  min-width: 44px;
   min-height: 44px;
   padding: 7px 0;
   border: 0;

@@ -41,6 +41,7 @@ code { background: var(--stone); padding: 3px 6px; border-radius: 4px; }
 .auth-intro > p:last-child { max-width: 620px; margin: 0; color: #d4d8d1; font-size: 1.05rem; line-height: 1.65; }
 .auth-card { align-self: center; display: grid; gap: 24px; padding: clamp(32px, 6vw, 80px); }
 .auth-card h2, .new-trip-card h1, .editor-panel > h1 { margin: 0; font: 500 clamp(2rem, 4vw, 3.4rem)/1 var(--serif); letter-spacing: -.04em; }
+.auth-card h2 { color: var(--forest); }
 label { display: grid; gap: 8px; color: var(--ink-soft); font-size: .82rem; font-weight: 650; }
 label span { color: var(--ink-faint); font-size: .74rem; font-weight: 400; }
 input, textarea { width: 100%; border: 1px solid transparent; border-radius: 6px; background: var(--control); color: var(--ink); padding: 13px 14px; transition: border-color 150ms ease, background-color 150ms ease; }
@@ -59,8 +60,8 @@ textarea { resize: vertical; line-height: 1.55; }
 .form-error { background: #f2ded8; color: var(--error); }
 .form-success { background: #dce9e1; color: var(--success); }
 
-.landing-auth-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 20px; overflow-y: auto; background: rgba(7,25,28,.78); }
-.landing-auth-dialog { position: relative; width: min(1040px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; background: var(--paper); box-shadow: 0 30px 100px rgba(0,0,0,.35); }
+.landing-auth-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; overflow-y: auto; pointer-events: auto; background: rgba(7,25,28,.78); }
+.landing-auth-dialog { position: relative; z-index: 1; width: min(1040px, 100%); max-height: calc(100vh - 40px); overflow-y: auto; pointer-events: auto; background: var(--paper); box-shadow: 0 30px 100px rgba(0,0,0,.35); }
 .landing-auth-close { position: absolute; z-index: 2; top: 16px; right: 18px; min-height: 42px; padding: 8px 10px; border: 0; background: transparent; color: var(--ink-faint); font-size: .74rem; text-decoration: underline; text-underline-offset: 4px; }
 .landing-auth-dialog .auth-shell { min-height: 0; grid-template-columns: minmax(0, 1.05fr) minmax(340px, .95fr); }
 .landing-auth-dialog .auth-intro { min-height: 660px; padding: clamp(34px, 5vw, 68px); }
